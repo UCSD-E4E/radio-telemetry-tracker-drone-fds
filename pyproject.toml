@@ -12,26 +12,8 @@ python = "^3.12"
 smbus2 = "^0.4.3"
 
 [tool.poetry.dev-dependencies]
-flake8 = "^7.1.1"
+ruff = "^0.6.3"
 black = "^24.8.0"
-
-[tool.black]
-line-length = 88
-target-version = ['py312']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
 
 [tool.poetry.scripts]
 rttDroneFDS = "radio_telemetry_tracker_drone_fds.main:main"
