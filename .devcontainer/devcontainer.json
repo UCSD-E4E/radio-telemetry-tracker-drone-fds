@@ -1,0 +1,21 @@
+{
+    "name": "Radio Telemetry Tracker Drone FDS Dev Container",
+    "dockerComposeFile": [
+        "../docker-compose.yml"
+    ],
+    "service": "dev",
+    "workspaceFolder": "/workspace/radio-telemetry-tracker-drone-fds",
+    "containerEnv": {
+        "GPS_I2C_BUS": "1",
+        "GPS_ADDRESS": "0x42"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.flake8",
+                "ms-python.black-formatter"
+            ]
+        }
+    }
+}
