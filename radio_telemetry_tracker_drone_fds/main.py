@@ -1,65 +1,30 @@
-import smbus2
-import os
-import time
+"""Main module for the Radio Telemetry Tracker Drone FDS."""
 
-# Read I2C bus number and device address from environment variables
-i2c_bus = int(os.getenv('GPS_I2C_BUS'))
-neo_m9n_address = int(os.getenv('GPS_ADDRESS'), 16)
-bus = smbus2.SMBus(i2c_bus)
+import logging
+import threading
 
-buffer = ""
+from radio_telemetry_tracker_drone_fds.data_processor import DataProcessor
+from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 
-def read_gps_data(address, total_length=32):
+
+def main() -> None:
+    """Initialize and run the Radio Telemetry Tracker Drone FDS."""
+    gps_module = GPSModule()
+    data_processor = DataProcessor()
+
+    gps_module.set_callback(data_processor.process_gps_data)
+
+    gps_thread = threading.Thread(target=gps_module.run)
+    gps_thread.start()
+
     try:
-        data = bus.read_i2c_block_data(address, 0xFF, total_length)
-        return data
-    except Exception as e:
-        print(f"Error reading GPS data: {e}")
-        return None
-
-def process_buffer(buffer):
-    sentences = buffer.split('\n')
-    for sentence in sentences[:-1]:  # Process all complete sentences
-        if sentence.startswith('$GNRMC'):
-            parts = sentence.split(',')
-            if len(parts) >= 6:
-                latitude = convert_to_degrees(parts[3], parts[4], is_latitude=True)
-                longitude = convert_to_degrees(parts[5], parts[6], is_latitude=False)
-                print(f"Latitude: {latitude}, Longitude: {longitude}")
-    return sentences[-1]  # Return the last part of the buffer (incomplete sentence)
-
-def convert_to_degrees(value, direction, is_latitude):
-    if not value or not direction:
-        return None
-    
-    if is_latitude:
-        degrees = float(value[:2])
-        minutes = float(value[2:])
-    else:
-        degrees = float(value[:3])
-        minutes = float(value[3:])
-    
-    decimal_degrees = degrees + minutes / 60
-    
-    if direction in ['S', 'W']:
-        decimal_degrees *= -1
-    
-    return decimal_degrees
-
-# Read and parse data continuously
-while True:
-    data = read_gps_data(neo_m9n_address, 32)
-    if data:
-        buffer += ''.join(chr(c) for c in data)
-        buffer = process_buffer(buffer)
-    time.sleep(0.1)  # Short sleep to reduce CPU usage
+        while True:
+            # Main loop
+            pass
+    except KeyboardInterrupt:
+        logging.info("Stopping GPS module...")
+        gps_module.stop()
+        gps_thread.join()
 
 if __name__ == "__main__":
-    # Add any code here that you want to run when the script is executed directly
-    print("GPS module running...")
-    # For example, you might want to start a loop to continuously read GPS data
-    while True:
-        data = read_gps_data(neo_m9n_address)
-        if data:
-            buffer = process_buffer(buffer + ''.join(chr(b) for b in data))
-        time.sleep(1)  # Wait for 1 second before reading again
+    main()
