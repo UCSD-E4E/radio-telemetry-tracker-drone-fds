@@ -10,6 +10,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.12"
 smbus2 = "^0.4.3"
+rct_dsp2 = { path = "/workspace/radio_collar_tracker_dsp2" }
 
 [tool.poetry.dev-dependencies]
 ruff = "^0.6.3"
