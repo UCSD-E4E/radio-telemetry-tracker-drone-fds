@@ -3,7 +3,7 @@
     "dockerComposeFile": [
         "../docker-compose.yml"
     ],
-    "service": "dev",
+    "service": "rtt-drone-fds-dev",
     "workspaceFolder": "/workspace/radio-telemetry-tracker-drone-fds",
     "customizations": {
         "vscode": {

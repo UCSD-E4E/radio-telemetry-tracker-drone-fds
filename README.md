@@ -38,27 +38,36 @@ docker pull ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
 
 3. Run the Docker container:
 
+a. Run the container via `docker run`:
+
 ```bash
-docker run -d --name rtt-drone-fds \
+docker run -d --name rtt-drone-fds-release \
 --privileged \
 --device=/dev/i2c-1:/dev/i2c-1 \
 --device=/dev/bus/usb/001/006:/dev/bus/usb/001/006 \
 -e GPS_I2C_BUS=1 \
 -e GPS_ADDRESS=0x42 \
 -e PING_FINDER_CONFIG='{"gain": 56.0, "sampling_rate": 2500000, "center_frequency": 173500000, "run_num": 1, "enable_test_data": false, "output_dir": "./deleteme/", "ping_width_ms": 25, "ping_min_snr": 25, "ping_max_len_mult": 1.5, "ping_min_len_mult": 0.5, "target_frequencies": [173043000]}' \
+-e WAIT_TIME=60 \
 ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
+```
+
+b. Run the container via `docker compose` (make sure you have a `docker-compose.yml` file from the Release page):
+
+```bash
+docker compose up -d rtt-drone-fds-release
 ```
 
 4. View logs:
 
 ```bash
-docker logs rtt-drone-fds
+docker logs rtt-drone-fds-release
 ```
 
 5. Stop the container:
 
 ```bash
-docker stop rtt-drone-fds
+docker stop rtt-drone-fds-release
 ```
 
 **Note:** This program is intended to run on computer startup. To achieve this, you can set up the Docker container to start automatically when the system boots. One way to do this is by using Docker's `--restart always` option when running the container, or by creating a systemd service that starts the Docker container on boot.

@@ -39,8 +39,8 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker-compose build release
-          docker-compose push release
+          docker-compose build rtt-drone-fds-release
+          docker-compose push rtt-drone-fds-release
 
       - name: Create Release
         id: create_release
