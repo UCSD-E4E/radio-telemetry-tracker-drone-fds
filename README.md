@@ -52,7 +52,7 @@ docker run -d --name rtt-drone-fds-release \
 ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
 ```
 
-b. Run the container via `docker compose` (make sure you have a `docker-compose.yml` file from the Release page):
+b. Run the container via `docker compose` (make sure you have a `docker-compose.yml` file from the Release page and edit variables as needed):
 
 ```bash
 docker compose up -d rtt-drone-fds-release
