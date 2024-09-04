@@ -6,9 +6,10 @@
 3. [Getting Started](#getting-started)
 4. [Configuration](#configuration)
 5. [Troubleshooting](#troubleshooting)
+6. [Development](#development)
 
 ## Overview
-Brief description of the project (to be added)
+The Radio Telemetry Tracker Drone FDS is a software program designed to track and record radio telemetry data from a drone. It is built using Python and utilizes various hardware components to collect and process telemetry data from a drone's radio transmitter.
 
 ## Hardware Requirements
 
@@ -45,10 +46,10 @@ docker run -d --name rtt-drone-fds-release \
 --privileged \
 --device=/dev/i2c-1:/dev/i2c-1 \
 --device=/dev/bus/usb/001/006:/dev/bus/usb/001/006 \
+-v /media/usbstick:/media/usbstick \
 -e GPS_I2C_BUS=1 \
 -e GPS_ADDRESS=0x42 \
 -e PING_FINDER_CONFIG='{"gain": 56.0, "sampling_rate": 2500000, "center_frequency": 173500000, "run_num": 1, "enable_test_data": false, "output_dir": "./deleteme/", "ping_width_ms": 25, "ping_min_snr": 25, "ping_max_len_mult": 1.5, "ping_min_len_mult": 0.5, "target_frequencies": [173043000]}' \
--e WAIT_TIME=60 \
 ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
 ```
 
@@ -78,12 +79,16 @@ docker stop rtt-drone-fds-release
 - `GPS_I2C_BUS`: I2C bus for GPS module (default: 1)
 - `GPS_ADDRESS`: I2C address for GPS module (default: 0x42)
 - `PING_FINDER_CONFIG`: JSON string for PingFinder configuration
+- `WAIT_TIME`: Time to wait before starting the program (default: 60 seconds)
 
 ### Device Mappings
 - I2C bus (GPS): `/dev/i2c-1` (default, adjustable)
 - USB device (SDR): `/dev/bus/usb/001/006` (default, adjustable)
 
-Adjust these in the Docker run command or `docker-compose.yml` as needed.
+### USB Drive Usage
+For data storage and retrieval, it's recommended to use a USB drive. The program will automatically detect and use a USB drive mounted under `/media/` or `/mnt/`. This allows for easy data collection and transfer. Make sure to insert a USB drive before starting the program for optimal data storage. If no USB drive is detected, the program will output in the root directory.
+
+Adjust these settings in the Docker run command or `docker-compose.yml` as needed.
 
 For detailed options, see `config.py` in the source code.
 
@@ -99,6 +104,16 @@ For detailed options, see `config.py` in the source code.
    ```bash
    lsusb
    ```
+
+3. To check for mounted USB drives:
+   ```bash
+   lsblk
+   ```
+   or
+   ```bash
+   df -h
+   ```
+   Look for entries under `/media/` or `/mnt/` to confirm if a USB drive is properly mounted.
 
 ### Privileged Mode
 The Docker container runs in privileged mode to access hardware devices.
@@ -132,8 +147,3 @@ black = "^24.8.0"
 7. VS Code should automatically install and run `ruff` and `black` when you open the project. The code will be formatted automatically on save.
 
 8. When making changes, please refer to the Engineers for Exploration Radio Telemetry Tracker Code Style Guidelines.
-
-
-
-
-

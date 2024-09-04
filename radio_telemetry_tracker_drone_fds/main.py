@@ -1,15 +1,11 @@
 """Main module for the Radio Telemetry Tracker Drone FDS."""
 
-import asyncio
 import logging
 import os
 import sys
 import threading
 import time
 
-import aioconsole
-
-from radio_telemetry_tracker_drone_fds.config import WAIT_TIME
 from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
 
@@ -18,10 +14,20 @@ logger = logging.getLogger(__name__)
 
 def setup_logging() -> None:
     """Configure basic logging for the application."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Remove all existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
 
 
 def check_sudo() -> None:
@@ -39,11 +45,12 @@ def wait_for_gps_ready(gps_module: GPSModule) -> None:
     logger.info("GPS is ready.")
 
 
-async def print_heartbeat(
+def print_heartbeat(
     gps_module: GPSModule,
     ping_finder_module: PingFinderModule,
 ) -> None:
     """Print periodic heartbeat messages with GPS and PingFinder status."""
+    logger.debug("print_heartbeat called")
     while True:
         gps_data, gps_state = gps_module.get_gps_data()
         ping_finder_state = ping_finder_module.get_state()
@@ -58,7 +65,7 @@ async def print_heartbeat(
         )
         logger.info("-" * 40)
 
-        await asyncio.sleep(5)  # Non-blocking sleep
+        time.sleep(5)  # Non-blocking sleep
 
 
 def run_gps_module(gps_module: GPSModule) -> None:
@@ -71,49 +78,40 @@ def run_ping_finder(ping_finder_module: PingFinderModule) -> None:
     ping_finder_module.start()
 
 
-async def wait_for_start(timeout: int = 60) -> None:
-    """Wait for user input or timeout."""
-    logger.info("Waiting for %d seconds. Type 'start' to begin immediately.", timeout)
-    try:
-        user_input = await asyncio.wait_for(aioconsole.ainput(), timeout)
-        if user_input.strip().lower() == "start":
-            logger.info("Starting immediately.")
-        else:
-            logger.info("Invalid input. Waiting for the full %d seconds.", timeout)
-            await asyncio.sleep(timeout)
-    except asyncio.TimeoutError:
-        logger.info("Timeout elapsed. Starting now.")
-
-
-async def run() -> None:
+def run() -> None:
     """Initialize and run the Radio Telemetry Tracker Drone FDS."""
     setup_logging()
     check_sudo()
 
-    await wait_for_start(WAIT_TIME)
+    logger.info("Starting run function")
 
+    logger.info("Initializing GPS module")
     gps_module = GPSModule()
+    logger.info("Initializing PingFinder module")
     ping_finder_module = PingFinderModule(gps_module)
 
+    logger.info("Starting GPS thread")
     gps_thread = threading.Thread(target=run_gps_module, args=(gps_module,))
     gps_thread.start()
 
-    # Wait for GPS to be ready
+    logger.info("Waiting for GPS to be ready")
     wait_for_gps_ready(gps_module)
+    logger.info("GPS is ready")
 
-    # Start ping finder only after GPS is ready
+    logger.info("Starting PingFinder thread")
     ping_finder_thread = threading.Thread(
         target=run_ping_finder,
         args=(ping_finder_module,),
     )
     ping_finder_thread.start()
 
-    await print_heartbeat(gps_module, ping_finder_module)
+    logger.info("Starting heartbeat")
+    print_heartbeat(gps_module, ping_finder_module)
 
 
 def main() -> None:
     """Entry point for the Radio Telemetry Tracker Drone FDS."""
-    asyncio.run(run())
+    run()
 
 
 if __name__ == "__main__":

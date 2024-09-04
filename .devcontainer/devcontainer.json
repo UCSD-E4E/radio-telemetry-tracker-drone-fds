@@ -1,7 +1,7 @@
 {
     "name": "Radio Telemetry Tracker Drone FDS Dev Container",
     "dockerComposeFile": [
-        "../docker-compose.yml"
+        "../docker-compose.dev.yml"
     ],
     "service": "rtt-drone-fds-dev",
     "workspaceFolder": "/workspace/radio-telemetry-tracker-drone-fds",

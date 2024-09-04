@@ -1,14 +1,21 @@
 """Module for handling ping finding operations using SDR."""
 
+from __future__ import annotations
+
+import csv
 import datetime as dt
 import logging
 import threading
 from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rct_dsp2 import PingFinder
 
 from radio_telemetry_tracker_drone_fds.config import PING_FINDER_CONFIG
-from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
+
+if TYPE_CHECKING:
+    from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 
 
 class PingFinderState(Enum):
@@ -26,11 +33,15 @@ class PingFinderModule:
 
     def __init__(self, gps_module: GPSModule) -> None:
         """Initialize PingFinderModule with configured PingFinder and GPSModule."""
+        self._gps_module = gps_module
         self._ping_finder = PingFinder()
         self._configure_ping_finder()
-        self._gps_module = gps_module
         self._state = PingFinderState.READY
         self._stop_event = threading.Event()
+        self._csv_file = None
+        self._csv_writer = None
+        self._run_num = PING_FINDER_CONFIG.get("run_num", 1)
+        self._initialize_csv_log()
 
     def _configure_ping_finder(self) -> None:
         for key, value in PING_FINDER_CONFIG.items():
@@ -38,8 +49,51 @@ class PingFinderModule:
         self._ping_finder.register_callback(self._callback)
         self._state = PingFinderState.READY
 
+    def _initialize_csv_log(self) -> None:
+        output_dir = Path(PING_FINDER_CONFIG.get("output_dir", "./rtt_output/"))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self._csv_filename = output_dir / f"ping_log_{timestamp}_run{self._run_num}.csv"
+
+        with self._csv_filename.open("w", newline="") as self._csv_file:
+            self._csv_writer = csv.writer(self._csv_file)
+            self._csv_writer.writerow(
+                [
+                    "Run",
+                    "Timestamp",
+                    "Frequency",
+                    "Amplitude",
+                    "Latitude",
+                    "Longitude",
+                    "Altitude",
+                ],
+            )
+
+    def _log_ping_to_csv(
+        self,
+        data: tuple[dt.datetime, float, int, float, float, float],
+    ) -> None:
+        with self._csv_filename.open("a", newline="") as csv_file:
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow([self._run_num, *list(data)])
+
     def _callback(self, now: dt.datetime, amplitude: float, frequency: int) -> None:
+        logging.debug("PingFinderModule._callback called")
         gps_data, _ = self._gps_module.get_gps_data()
+
+        # Log to CSV
+        self._log_ping_to_csv(
+            (
+                now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                frequency,
+                amplitude,
+                gps_data.latitude if gps_data.latitude is not None else "N/A",
+                gps_data.longitude if gps_data.longitude is not None else "N/A",
+                gps_data.altitude if gps_data.altitude is not None else "N/A",
+            ),
+        )
+
+        # Existing logging code
         logging.info("=" * 60)
         logging.info("Timestamp: %s", now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
         logging.info("Frequency: %d Hz", frequency)
@@ -55,6 +109,11 @@ class PingFinderModule:
             f"  Longitude: {gps_data.longitude:.6f}"
             if gps_data.longitude is not None
             else "  Longitude: N/A",
+        )
+        logging.info(
+            f"  Altitude:  {gps_data.altitude:.2f}"
+            if gps_data.altitude is not None
+            else "  Altitude:  N/A",
         )
         logging.info("=" * 60)
 
