@@ -5,10 +5,6 @@
     ],
     "service": "dev",
     "workspaceFolder": "/workspace/radio-telemetry-tracker-drone-fds",
-    "containerEnv": {
-        "GPS_I2C_BUS": "1",
-        "GPS_ADDRESS": "0x42"
-    },
     "customizations": {
         "vscode": {
             "extensions": [
