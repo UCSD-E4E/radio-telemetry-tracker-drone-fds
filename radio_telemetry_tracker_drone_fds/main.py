@@ -1,13 +1,11 @@
 """Main module for the Radio Telemetry Tracker Drone FDS."""
 
+import asyncio
 import logging
 import os
-import signal
 import sys
 import threading
 import time
-import types
-from threading import Event
 
 from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
@@ -38,13 +36,12 @@ def wait_for_gps_ready(gps_module: GPSModule) -> None:
     logger.info("GPS is ready.")
 
 
-def print_heartbeat(
+async def print_heartbeat(
     gps_module: GPSModule,
     ping_finder_module: PingFinderModule,
-    stop_event: Event,
 ) -> None:
     """Print periodic heartbeat messages with GPS and PingFinder status."""
-    while not stop_event.is_set():
+    while True:
         gps_data, gps_state = gps_module.get_gps_data()
         ping_finder_state = ping_finder_module.get_state()
 
@@ -58,10 +55,20 @@ def print_heartbeat(
         )
         logger.info("-" * 40)
 
-        stop_event.wait(5)
+        await asyncio.sleep(5)  # Non-blocking sleep
 
 
-def main() -> None:
+def run_gps_module(gps_module: GPSModule) -> None:
+    """Run the GPS module."""
+    gps_module.run()
+
+
+def run_ping_finder(ping_finder_module: PingFinderModule) -> None:
+    """Start the PingFinder module."""
+    ping_finder_module.start()
+
+
+async def run() -> None:
     """Initialize and run the Radio Telemetry Tracker Drone FDS."""
     setup_logging()
     check_sudo()
@@ -69,28 +76,25 @@ def main() -> None:
     gps_module = GPSModule()
     ping_finder_module = PingFinderModule(gps_module)
 
-    gps_thread = threading.Thread(target=gps_module.run)
+    gps_thread = threading.Thread(target=run_gps_module, args=(gps_module,))
     gps_thread.start()
 
+    # Wait for GPS to be ready
     wait_for_gps_ready(gps_module)
 
-    ping_finder_module.start()
-
-    stop_event = threading.Event()
-    heartbeat_thread = threading.Thread(
-        target=print_heartbeat,
-        args=(gps_module, ping_finder_module, stop_event),
+    # Start ping finder only after GPS is ready
+    ping_finder_thread = threading.Thread(
+        target=run_ping_finder,
+        args=(ping_finder_module,),
     )
-    heartbeat_thread.start()
+    ping_finder_thread.start()
 
-    def signal_handler(_signum: int, _frame: types.FrameType) -> None:
-        logger.info("Stopping GPS module and ping finder module...")
-        stop_event.set()
+    await print_heartbeat(gps_module, ping_finder_module)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
-    signal.pause()
+def main() -> None:
+    """Entry point for the Radio Telemetry Tracker Drone FDS."""
+    asyncio.run(run())
 
 
 if __name__ == "__main__":
