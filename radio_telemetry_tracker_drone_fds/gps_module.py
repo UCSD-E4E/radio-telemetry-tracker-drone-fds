@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from enum import Enum
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 
 import smbus2
+
+from radio_telemetry_tracker_drone_fds.config import GPS_ADDRESS, GPS_I2C_BUS
 
 
 class GPSData(NamedTuple):
@@ -26,6 +27,7 @@ class GPSState(Enum):
 
     NOT_READY = "Not Ready"
     WAITING = "Waiting"
+    PARTIAL = "Partial"
     READY = "Ready"
     ERRORED = "Errored"
 
@@ -40,43 +42,38 @@ class GPSModule:
     def __init__(self) -> None:
         """Initialize the GPS module with I2C bus and device address."""
         logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
-        self.logger.debug("Initializing GPSModule")
-        self.i2c_bus = int(os.getenv("GPS_I2C_BUS"))
-        self.neo_m9n_address = int(os.getenv("GPS_ADDRESS"), 16)
-        self.bus = smbus2.SMBus(self.i2c_bus)
-        self.buffer = ""
-        self.gps_data = GPSData(None, None, None, None)
-        self.lock = threading.Lock()
-        self.running = True
-        self.callback = None
-        self.state = GPSState.NOT_READY
-        self.last_update_time = 0
-
-    def set_callback(self, callback: Callable[[GPSData, GPSState], None]) -> None:
-        """Set the callback function for GPS data updates."""
-        self.callback = callback
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug("Initializing GPSModule")
+        self._i2c_bus = GPS_I2C_BUS
+        self._neo_m9n_address = GPS_ADDRESS
+        self._bus = smbus2.SMBus(self._i2c_bus)
+        self._buffer = ""
+        self._gps_data = GPSData(None, None, None, None)
+        self._lock = threading.Lock()
+        self._running = True
+        self._state = GPSState.NOT_READY
+        self._last_update_time = 0
 
     def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
         try:
-            return self.bus.read_i2c_block_data(
-                self.neo_m9n_address,
+            return self._bus.read_i2c_block_data(
+                self._neo_m9n_address,
                 0xFF,
                 total_length,
             )
         except OSError:
             logging.exception("Error reading GPS data")
-            self.state = GPSState.ERRORED
+            self._state = GPSState.ERRORED
             return None
 
     def _process_buffer(self) -> str:
-        sentences = self.buffer.split("\n")
+        sentences = self._buffer.split("\n")
         data_updated, new_gps_data = self._process_sentences(sentences[:-1])
 
         if data_updated and new_gps_data:
             self._update_gps_data(new_gps_data)
-        elif time.time() - self.last_update_time > self.GPS_DATA_TIMEOUT:
-            self.state = GPSState.WAITING
+        elif time.time() - self._last_update_time > self.GPS_DATA_TIMEOUT:
+            self._state = GPSState.WAITING
 
         return sentences[-1]
 
@@ -126,37 +123,39 @@ class GPSModule:
                     current_data.heading,
                 )
             return GPSData(
-                self.gps_data.latitude,
-                self.gps_data.longitude,
+                self._gps_data.latitude,
+                self._gps_data.longitude,
                 altitude,
-                self.gps_data.heading,
+                self._gps_data.heading,
             )
         return current_data
 
     def _update_gps_data(self, new_gps_data: GPSData) -> None:
-        with self.lock:
-            if self.state == GPSState.READY:
-                # If state is READY, only update non-None values
-                self.gps_data = GPSData(
-                    new_gps_data.latitude or self.gps_data.latitude,
-                    new_gps_data.longitude or self.gps_data.longitude,
-                    new_gps_data.altitude or self.gps_data.altitude,
-                    new_gps_data.heading or self.gps_data.heading,
-                )
-            else:
-                self.gps_data = new_gps_data
-
-        self.last_update_time = time.time()
-        self.state = (
-            GPSState.READY
-            if all(
-                getattr(self.gps_data, attr) is not None
-                for attr in ["latitude", "longitude", "altitude"]
+        with self._lock:
+            old_data = self._gps_data
+            self._gps_data = GPSData(
+                new_gps_data.latitude or old_data.latitude,
+                new_gps_data.longitude or old_data.longitude,
+                new_gps_data.altitude or old_data.altitude,
+                new_gps_data.heading or old_data.heading,
             )
-            else GPSState.WAITING
-        )
-        if self.callback:
-            self.callback(self.gps_data, self.state)
+
+        self._last_update_time = time.time()
+
+        # Check if any of the critical values (lat, lon, alt) are zero or None
+        critical_values = [
+            self._gps_data.latitude,
+            self._gps_data.longitude,
+            self._gps_data.altitude,
+        ]
+        zero_values = [v for v in critical_values if v == 0 or v is None]
+
+        if len(zero_values) == len(critical_values):
+            self._state = GPSState.WAITING
+        elif len(zero_values) > 0:
+            self._state = GPSState.PARTIAL
+        else:
+            self._state = GPSState.READY
 
     def _convert_to_degrees(
         self,
@@ -174,21 +173,27 @@ class GPSModule:
 
     def run(self) -> None:
         """Continuously read and process GPS data."""
-        self.logger.info("Starting GPS data acquisition loop")
-        self.state = GPSState.WAITING
-        while self.running:
+        self._logger.info("Starting GPS data acquisition loop")
+        self._state = GPSState.WAITING
+        while self._running:
             data = self._read_gps_data(32)
             if data:
-                self.buffer += "".join(chr(c) for c in data)
-                self.buffer = self._process_buffer()
+                self._buffer += "".join(chr(c) for c in data)
+                self._buffer = self._process_buffer()
             else:
-                self.logger.debug("No GPS data received")
+                self._logger.debug("No GPS data received")
             time.sleep(0.1)
 
-    def _get_gps_data(self) -> tuple[GPSData, GPSState]:
-        with self.lock:
-            return self.gps_data, self.state
+    def get_gps_data(self) -> tuple[GPSData, GPSState]:
+        """Return the current GPS data and state."""
+        with self._lock:
+            return self._gps_data, self._state
 
     def stop(self) -> None:
         """Stop the GPS module's data acquisition loop."""
         self.running = False
+
+    def is_ready(self) -> bool:
+        """Check if the GPS module is in READY state."""
+        _, state = self.get_gps_data()
+        return state == GPSState.READY
