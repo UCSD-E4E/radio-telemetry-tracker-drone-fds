@@ -8,3 +8,7 @@ services:
       - "/dev/bus/usb/001/006:/dev/bus/usb/001/006"
     privileged: true
     command: /bin/sh -c "while sleep 10000; do :; done"
+    group_add:
+      - dialout
+    environment:
+      - PYTHONUNBUFFERED=1
