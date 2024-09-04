@@ -24,3 +24,7 @@ DEFAULT_PING_FINDER_CONFIG = {
 # Load PING_FINDER_CONFIG from environment variable if set, otherwise use default
 PING_FINDER_CONFIG = json.loads(os.getenv("PING_FINDER_CONFIG", "{}"))
 PING_FINDER_CONFIG = {**DEFAULT_PING_FINDER_CONFIG, **PING_FINDER_CONFIG}
+
+# Load WAIT_TIME from environment variable if set, otherwise use default
+DEFAULT_WAIT_TIME = 60  # seconds
+WAIT_TIME = int(os.getenv("WAIT_TIME", str(DEFAULT_WAIT_TIME)))

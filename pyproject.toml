@@ -11,6 +11,7 @@ packages = [
 python = "^3.12"
 smbus2 = "^0.4.3"
 rct_dsp2 = { path = "/workspace/radio_collar_tracker_dsp2" }
+aioconsole = "^0.8.0"
 
 [tool.poetry.dev-dependencies]
 ruff = "^0.6.3"

@@ -7,6 +7,9 @@ import sys
 import threading
 import time
 
+import aioconsole
+
+from radio_telemetry_tracker_drone_fds.config import WAIT_TIME
 from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
 
@@ -68,10 +71,26 @@ def run_ping_finder(ping_finder_module: PingFinderModule) -> None:
     ping_finder_module.start()
 
 
+async def wait_for_start(timeout: int = 60) -> None:
+    """Wait for user input or timeout."""
+    logger.info("Waiting for %d seconds. Type 'start' to begin immediately.", timeout)
+    try:
+        user_input = await asyncio.wait_for(aioconsole.ainput(), timeout)
+        if user_input.strip().lower() == "start":
+            logger.info("Starting immediately.")
+        else:
+            logger.info("Invalid input. Waiting for the full %d seconds.", timeout)
+            await asyncio.sleep(timeout)
+    except asyncio.TimeoutError:
+        logger.info("Timeout elapsed. Starting now.")
+
+
 async def run() -> None:
     """Initialize and run the Radio Telemetry Tracker Drone FDS."""
     setup_logging()
     check_sudo()
+
+    await wait_for_start(WAIT_TIME)
 
     gps_module = GPSModule()
     ping_finder_module = PingFinderModule(gps_module)
