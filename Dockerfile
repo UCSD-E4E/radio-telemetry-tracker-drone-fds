@@ -5,9 +5,6 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     git \
     curl \
-    && add-apt-repository ppa:ettusresearch/uhd \
-    && apt-get update \
-    && apt-get install -y \
     fftw-dev \
     libboost-all-dev \
     libuhd-dev \
@@ -21,42 +18,42 @@ RUN apt-get update && apt-get install -y \
     cmake \
     build-essential \
     python3-psutil \
+    && add-apt-repository ppa:ettusresearch/uhd \
+    && apt-get update \
+    && apt-get install -y uhd-host \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Run UHD images downloader
 RUN uhd_images_downloader
 
-# Clone rct_dsp2
-RUN git clone --branch v1.1.1 https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git /workspace/radio_collar_tracker_dsp2
-WORKDIR /workspace/radio_collar_tracker_dsp2
-
-# Create and activate virtual environment
-RUN python3 -m venv .venv
-ENV PATH="/workspace/radio_collar_tracker_dsp2/.venv/bin:$PATH"
-
-# Install rct_dsp2
-RUN pip install .
+# Clone rct_dsp2 and install
+WORKDIR /workspace
+RUN git clone --branch v1.1.1 https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git \
+    && cd radio_collar_tracker_dsp2 \
+    && python3 -m venv .venv \
+    && . .venv/bin/activate \
+    && pip install . \
+    && if [ -f install.sh ]; then \
+         sed 's/sudo //g' install.sh > temp_install.sh \
+         && chmod +x temp_install.sh \
+         && ./temp_install.sh \
+         && rm temp_install.sh; \
+       else \
+         echo "install.sh not found!"; \
+       fi
 
 # Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
+RUN curl -sSL https://install.python-poetry.org | python3 - \
+    && echo 'export PATH="/root/.local/bin:$PATH"' >> ~/.bashrc
 
 # Add user to dialout group
 RUN groupadd -f dialout && usermod -aG dialout root
-
-# Set default environment variables
-ENV GPS_I2C_BUS=1
-ENV GPS_ADDRESS=0x42
-ENV PING_FINDER_CONFIG='{}'
 
 # Set working directory for the project
 WORKDIR /workspace/radio-telemetry-tracker-drone-fds
 
 # Copy the project files
 COPY . .
-
-# Clean up APT when done
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install the project dependencies
 RUN poetry install --no-dev

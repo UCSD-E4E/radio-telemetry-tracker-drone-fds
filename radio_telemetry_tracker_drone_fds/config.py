@@ -3,68 +3,53 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from pathlib import Path
-
-import psutil
-
-GPS_I2C_BUS = int(os.getenv("GPS_I2C_BUS", "1"))
-GPS_ADDRESS = int(os.getenv("GPS_ADDRESS", "0x42"), 16)
+from typing import Any, Dict
 
 
-def get_mounted_drive() -> str | None:
-    """Return the mountpoint of the first mounted external drive, or None."""
-    partitions = psutil.disk_partitions()
-    for partition in partitions:
-        if partition.mountpoint.startswith(
-            "/media/",
-        ) or partition.mountpoint.startswith("/mnt/"):
-            return partition.mountpoint
-    return None
+class Config:
+    def __init__(self):
+        self.GPS_I2C_BUS = int(os.getenv("GPS_I2C_BUS", "1"))
+        self.GPS_ADDRESS = int(os.getenv("GPS_ADDRESS", "0x42"), 16)
+        self.WAIT_TO_START_TIMER = int(os.getenv("WAIT_TO_START_TIMER", "60"))
+        self.RUN_TIMER = int(os.getenv("RUN_TIMER", "3600"))
+
+        self.PING_FINDER_CONFIG = self._load_ping_finder_config()
+
+    def _load_ping_finder_config(self) -> Dict[str, Any]:
+        default_config = {
+            "gain": 56.0,
+            "sampling_rate": 2500000,
+            "center_frequency": 173500000,
+            "run_num": 1,
+            "enable_test_data": False,
+            "output_dir": str(self._get_output_dir()),
+            "ping_width_ms": 25,
+            "ping_min_snr": 25,
+            "ping_max_len_mult": 1.5,
+            "ping_min_len_mult": 0.5,
+            "target_frequencies": [173043000],
+        }
+
+        user_config = json.loads(os.getenv("PING_FINDER_CONFIG", "{}"))
+        return {**default_config, **user_config}
+
+    def _get_output_dir(self) -> Path:
+        for mount_point in ("/media", "/mnt"):
+            for path in Path(mount_point).glob("*"):
+                if path.is_mount():
+                    return path / "rtt_output"
+        return Path("./rtt_output")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "GPS_I2C_BUS": self.GPS_I2C_BUS,
+            "GPS_ADDRESS": self.GPS_ADDRESS,
+            "WAIT_TO_START_TIMER": self.WAIT_TO_START_TIMER,
+            "RUN_TIMER": self.RUN_TIMER,
+            "PING_FINDER_CONFIG": self.PING_FINDER_CONFIG,
+        }
 
 
-# Default PING_FINDER_CONFIG
-DEFAULT_PING_FINDER_CONFIG = {
-    "gain": 56.0,
-    "sampling_rate": 2500000,
-    "center_frequency": 173500000,
-    "run_num": 1,
-    "enable_test_data": False,
-    "output_dir": "./deleteme/",
-    "ping_width_ms": 25,
-    "ping_min_snr": 25,
-    "ping_max_len_mult": 1.5,
-    "ping_min_len_mult": 0.5,
-    "target_frequencies": [173043000],
-}
-
-# Load PING_FINDER_CONFIG from environment variable if set, otherwise use default
-mounted_drive = get_mounted_drive()
-if mounted_drive:
-    output_dir = Path(mounted_drive) / "rtt_output"
-else:
-    output_dir = Path("./rtt_output")
-
-# Default configuration if environment variable is not set or invalid
-DEFAULT_PING_FINDER_CONFIG = {
-    "gain": 56.0,
-    "sampling_rate": 2500000,
-    "center_frequency": 173500000,
-    "run_num": 1,
-    "enable_test_data": False,
-    "output_dir": str(output_dir),
-    "ping_width_ms": 25,
-    "ping_min_snr": 25,
-    "ping_max_len_mult": 1.5,
-    "ping_min_len_mult": 0.5,
-    "target_frequencies": [173043000],
-}
-
-try:
-    PING_FINDER_CONFIG = json.loads(os.getenv("PING_FINDER_CONFIG", "{}"))
-    # Merge with default config, keeping user-specified values
-    PING_FINDER_CONFIG = {**DEFAULT_PING_FINDER_CONFIG, **PING_FINDER_CONFIG}
-except json.JSONDecodeError:
-    logging.warning("Invalid JSON in PING_FINDER_CONFIG. Using default configuration.")
-    PING_FINDER_CONFIG = DEFAULT_PING_FINDER_CONFIG
+config = Config()
