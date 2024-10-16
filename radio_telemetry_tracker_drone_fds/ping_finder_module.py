@@ -201,3 +201,12 @@ class PingFinderModule:
             gps_data.latitude,
             gps_data.altitude,
         )
+
+    def get_final_estimations(self) -> list[tuple[float, float, float, float]]:
+        """Return final estimations for all frequencies."""
+        final_estimations = []
+        for frequency in self._location_estimator.get_frequencies():
+            estimate = self._location_estimator.do_estimate(frequency)
+            if estimate is not None:
+                final_estimations.append((frequency, *estimate))
+        return final_estimations

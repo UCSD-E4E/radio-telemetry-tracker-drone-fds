@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 class Config:
-    def __init__(self):
+    """Configuration class for radio telemetry tracker drone settings."""
+
+    def __init__(self) -> None:
+        """Initialize the Config object with default values."""
         self.GPS_I2C_BUS = int(os.getenv("GPS_I2C_BUS", "1"))
         self.GPS_ADDRESS = int(os.getenv("GPS_ADDRESS", "0x42"), 16)
         self.WAIT_TO_START_TIMER = int(os.getenv("WAIT_TO_START_TIMER", "60"))
@@ -17,7 +20,7 @@ class Config:
 
         self.PING_FINDER_CONFIG = self._load_ping_finder_config()
 
-    def _load_ping_finder_config(self) -> Dict[str, Any]:
+    def _load_ping_finder_config(self) -> dict[str, Any]:
         default_config = {
             "gain": 56.0,
             "sampling_rate": 2500000,
@@ -42,7 +45,8 @@ class Config:
                     return path / "rtt_output"
         return Path("./rtt_output")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the configuration to a dictionary."""
         return {
             "GPS_I2C_BUS": self.GPS_I2C_BUS,
             "GPS_ADDRESS": self.GPS_ADDRESS,
