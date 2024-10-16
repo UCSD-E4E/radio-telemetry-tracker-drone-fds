@@ -7,7 +7,7 @@ services:
       - /media/usbstick:/media/usbstick
     devices:
       - "/dev/i2c-1:/dev/i2c-1"
-      - "/dev/bus/usb/002/004:/dev/bus/usb/002/004"
+      - "/dev/bus/usb:/dev/bus/usb"
     privileged: true
     group_add:
       - dialout
