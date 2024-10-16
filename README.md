@@ -14,7 +14,7 @@ The Radio Telemetry Tracker Drone FDS is a software program designed to track an
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-username/radio-telemetry-tracker-drone-fds.git
+   git clone https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-fds.git
    cd radio-telemetry-tracker-drone-fds
    ```
 
