@@ -1,149 +1,115 @@
 # Radio Telemetry Tracker Drone FDS
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Hardware Requirements](#hardware-requirements)
-3. [Getting Started](#getting-started)
-4. [Configuration](#configuration)
-5. [Troubleshooting](#troubleshooting)
-6. [Development](#development)
-
-## Overview
 The Radio Telemetry Tracker Drone FDS is a software program designed to track and record radio telemetry data from a drone. It is built using Python and utilizes various hardware components to collect and process telemetry data from a drone's radio transmitter.
 
-## Hardware Requirements
+## Installation and Setup
 
-### Single-Board Computer
-- [UP 7000](https://up-shop.org/default/up-7000-series.html)
-- Specifications: Intel N100, 8GB RAM, 64GB eMMC
+### Prerequisites
 
-### GPS Module
-- Model: Sparkfun Neo M9N
-- Default I2C bus: i2c-1
-- Default I2C address: 0x42
+- Ubuntu 24.04 or later
+- Docker
+- Docker Compose
 
-### Software-Defined Radio (SDR)
-- Model: USRP B200mini
-- Recommended USB port: Above the HDMI port on UP 7000
-- Note: Any available USB port can be used with correct configuration
+### Installation Steps
 
-## Getting Started
+1. Clone the repository:
+   ```
+   git clone https://github.com/your-username/radio-telemetry-tracker-drone-fds.git
+   cd radio-telemetry-tracker-drone-fds
+   ```
 
-1. Install Docker on your system.
+2. Build the Docker image:
+   ```
+   docker-compose build
+   ```
 
-2. Pull the latest Docker image: 
+   This command will build the Docker image.
 
-```bash
-docker pull ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
-```
+### Setting Up Automatic Start on Boot
 
-3. Run the Docker container:
+To configure the Docker container to start automatically when your Ubuntu computer boots up, follow these steps:
 
-a. Run the container via `docker run`:
+1. Create a systemd service file:
+   ```
+   sudo nano /etc/systemd/system/rtt-drone-fds.service
+   ```
 
-```bash
-docker run -d --name rtt-drone-fds-release \
---privileged \
---device=/dev/i2c-1:/dev/i2c-1 \
---device=/dev/bus/usb/001/006:/dev/bus/usb/001/006 \
--v /media/usbstick:/media/usbstick \
--e GPS_I2C_BUS=1 \
--e GPS_ADDRESS=0x42 \
--e PING_FINDER_CONFIG='{"gain": 56.0, "sampling_rate": 2500000, "center_frequency": 173500000, "run_num": 1, "enable_test_data": false, "output_dir": "./deleteme/", "ping_width_ms": 25, "ping_min_snr": 25, "ping_max_len_mult": 1.5, "ping_min_len_mult": 0.5, "target_frequencies": [173043000]}' \
-ghcr.io/ucsd-e4e/radio-telemetry-tracker-drone-fds:latest
-```
+2. Add the following content to the file:
+   ```
+   [Unit]
+   Description=Radio Telemetry Tracker Drone FDS
+   Requires=docker.service
+   After=docker.service
 
-b. Run the container via `docker compose` (make sure you have a `docker-compose.yml` file from the Release page and edit variables as needed):
+   [Service]
+   WorkingDirectory=/path/to/radio-telemetry-tracker-drone-fds
+   ExecStart=/usr/bin/docker-compose up
+   ExecStop=/usr/bin/docker-compose down
+   Restart=always
 
-```bash
-docker compose up -d rtt-drone-fds-release
-```
+   [Install]
+   WantedBy=multi-user.target
+   ```
 
-4. View logs:
+   Replace `/path/to/radio-telemetry-tracker-drone-fds` with the actual path to your project directory.
 
-```bash
-docker logs rtt-drone-fds-release
-```
+3. Save the file and exit the editor.
 
-5. Stop the container:
+4. Reload the systemd daemon:
+   ```
+   sudo systemctl daemon-reload
+   ```
 
-```bash
-docker stop rtt-drone-fds-release
-```
+5. Enable the service to start on boot:
+   ```
+   sudo systemctl enable rtt-drone-fds.service
+   ```
 
-**Note:** This program is intended to run on computer startup. To achieve this, you can set up the Docker container to start automatically when the system boots. One way to do this is by using Docker's `--restart always` option when running the container, or by creating a systemd service that starts the Docker container on boot.
+6. Start the service:
+   ```
+   sudo systemctl start rtt-drone-fds.service
+   ```
+
+Now, the Radio Telemetry Tracker Drone FDS container will automatically start when your Ubuntu computer boots up.
 
 ## Configuration
 
-### Environment Variables
-- `GPS_I2C_BUS`: I2C bus for GPS module (default: 1)
-- `GPS_ADDRESS`: I2C address for GPS module (default: 0x42)
-- `PING_FINDER_CONFIG`: JSON string for PingFinder configuration
-- `WAIT_TIME`: Time to wait before starting the program (default: 60 seconds)
+The project uses environment variables for configuration. You can modify these in the `docker-compose.yml` file:
 
-### Device Mappings
-- I2C bus (GPS): `/dev/i2c-1` (default, adjustable)
-- USB device (SDR): `/dev/bus/usb/001/006` (default, adjustable)
+```yaml:docker-compose.yml
+services:
+  rtt-drone-fds:
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GPS_I2C_BUS=1
+      - GPS_ADDRESS=0x42
+      - PING_FINDER_CONFIG='{}'
+      - WAIT_TO_START_TIMER=300
+      - RUN_TIMER=1800
+```
 
-### USB Drive Usage
-For data storage and retrieval, it's recommended to use a USB drive. The program will automatically detect and use a USB drive mounted under `/media/` or `/mnt/`. This allows for easy data collection and transfer. Make sure to insert a USB drive before starting the program for optimal data storage. If no USB drive is detected, the program will output in the root directory.
+## Usage
 
-Adjust these settings in the Docker run command or `docker-compose.yml` as needed.
+Once the container is running, the Radio Telemetry Tracker Drone FDS will automatically start its operations. The system will:
 
-For detailed options, see `config.py` in the source code.
+1. Initialize the GPS module
+2. Wait for a GPS fix
+3. Start the PingFinder module to detect and log radio signals
+4. Continuously log GPS and signal data
+
+Data will be saved to the mounted USB drive specified in the Docker Compose file.
 
 ## Troubleshooting
 
-### Checking Device Mappings
-1. For I2C devices:
-   ```bash
-   ls /dev/i2c*
-   ```
+- If the container doesn't start, check the systemd service logs:
+  ```
+  sudo journalctl -u rtt-drone-fds.service
+  ```
 
-2. For USB devices:
-   ```bash
-   lsusb
-   ```
+- Ensure that the USB devices (GPS and SDR) are properly connected and recognized by the system.
 
-3. To check for mounted USB drives:
-   ```bash
-   lsblk
-   ```
-   or
-   ```bash
-   df -h
-   ```
-   Look for entries under `/media/` or `/mnt/` to confirm if a USB drive is properly mounted.
+- If you encounter permission issues, make sure the container has the necessary privileges to access the required devices.
 
-### Privileged Mode
-The Docker container runs in privileged mode to access hardware devices.
+## License
 
-## Development
-
-For Engineers for Exploration Radio Telemetry Tracker project members:
-
-1. Contact the project lead to be added to the UP 7000 device that hosts this code.
-
-2. Once granted access, you can SSH into the device using VS Code Remote-SSH:
-
-3. The project code is located in the `/workspace/radio-telemetry-tracker-drone-fds` directory.
-
-4. To set up the development environment open the Command Palette (F1) and select `Remote-Containers: Reopen in Container`. This will open the project in a Docker container. 
-
-5. To run the program run the following command in the container:
-
-```bash
-poetry run rttDroneFDS
-```
-
-6. For code formatting and linting, we use `ruff` and `black`. These are configured in the `pyproject.toml` file:
-
-```pyproject.toml
-[tool.poetry.dev-dependencies]
-ruff = "^0.6.3"
-black = "^24.8.0"
-```
-
-7. VS Code should automatically install and run `ruff` and `black` when you open the project. The code will be formatted automatically on save.
-
-8. When making changes, please refer to the Engineers for Exploration Radio Telemetry Tracker Code Style Guidelines.
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
