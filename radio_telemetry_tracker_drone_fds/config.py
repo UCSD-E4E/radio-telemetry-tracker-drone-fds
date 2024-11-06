@@ -15,8 +15,6 @@ class Config:
         """Initialize the Config object with default values."""
         self.GPS_I2C_BUS = int(os.getenv("GPS_I2C_BUS", "1"))
         self.GPS_ADDRESS = int(os.getenv("GPS_ADDRESS", "0x42"), 16)
-        self.WAIT_TO_START_TIMER = int(os.getenv("WAIT_TO_START_TIMER", "60"))
-        self.RUN_TIMER = int(os.getenv("RUN_TIMER", "3600"))
 
         self.PING_FINDER_CONFIG = self._load_ping_finder_config()
 
@@ -50,8 +48,6 @@ class Config:
         return {
             "GPS_I2C_BUS": self.GPS_I2C_BUS,
             "GPS_ADDRESS": self.GPS_ADDRESS,
-            "WAIT_TO_START_TIMER": self.WAIT_TO_START_TIMER,
-            "RUN_TIMER": self.RUN_TIMER,
             "PING_FINDER_CONFIG": self.PING_FINDER_CONFIG,
         }
 

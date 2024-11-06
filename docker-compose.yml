@@ -16,5 +16,3 @@ services:
       - GPS_I2C_BUS=1
       - GPS_ADDRESS=0x42
       - PING_FINDER_CONFIG='{}'
-      - WAIT_TO_START_TIMER=300
-      - RUN_TIMER=1800
