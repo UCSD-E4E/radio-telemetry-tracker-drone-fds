@@ -109,39 +109,9 @@ def run() -> None:
     )
     heartbeat_thread.start()
 
-    # try:
-    #     logger.info("Running for %s seconds", config.RUN_TIMER)
-    #     time.sleep(config.RUN_TIMER)
-    # except KeyboardInterrupt:
-    #     logger.info("Keyboard interrupt received")
-    # finally:
-    #     logger.info("Stopping all modules")
-    #     gps_module.stop()
-    #     ping_finder_module.stop()
-    #     gps_thread.join(timeout=5)
-    #     ping_finder_thread.join(timeout=5)
-
-    #     logger.info("Getting final estimations")
-    #     final_estimations = ping_finder_module.get_final_estimations()
-
-    #     # Create a new CSV file for final estimations
-    #     output_dir = Path(config.PING_FINDER_CONFIG.get("output_dir", "./rtt_output/"))
-    #     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    #     final_estimations_filename = output_dir / f"final_estimations_{timestamp}.csv"
-
-    #     logger.info("Writing final estimations to %s", final_estimations_filename)
-    #     with final_estimations_filename.open("w", newline="") as csv_file:
-    #         csv_writer = csv.writer(csv_file)
-    #         csv_writer.writerow(["Frequency", "Longitude", "Latitude", "Altitude"])
-    #         csv_writer.writerows(final_estimations)
-
-    #     logger.info("Final estimations saved. Exiting the program.")
-
-
 def main() -> None:
     """Entry point for the Radio Telemetry Tracker Drone FDS application."""
     run()
-
 
 if __name__ == "__main__":
     main()
