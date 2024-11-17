@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from configparser import ConfigParser
 
 class Config:
     """Configuration class for radio telemetry tracker drone settings."""
@@ -20,23 +21,35 @@ class Config:
 
         self.PING_FINDER_CONFIG = self._load_ping_finder_config()
 
+    conf = ConfigParser()
+    conf.read(str(self.get_config_path()))
+
     def _load_ping_finder_config(self) -> dict[str, Any]:
         default_config = {
-            "gain": 56.0,
-            "sampling_rate": 2500000,
-            "center_frequency": 173500000,
-            "run_num": 1,
-            "enable_test_data": False,
+            "gain": conf.getfloat("signal", "gain"),
+            "sampling_rate": conf.getint("signal", "sampling_rate"),
+            "center_frequency": conf.getint("signal", "center_frequency"),
+            "run_num": conf.getint("signal", "run_num"),
+            "enable_test_data": conf.getboolean("signal", "enable_test_data"),
+            "ping_width_ms": conf.get("ping", "ping_width_ms"),
+            "ping_min_snr": conf.get("ping", "ping_min_snr"),
+            "ping_max_len_mult": conf.get("ping", "ping_max_len_mult"),
+            "ping_min_len_mult": conf.get("ping", "ping_min_len_mult"),
+            "target_frequencies": conf.get("ping", "target_frequencies"),
             "output_dir": str(self._get_output_dir()),
-            "ping_width_ms": 25,
-            "ping_min_snr": 25,
-            "ping_max_len_mult": 1.5,
-            "ping_min_len_mult": 0.5,
-            "target_frequencies": [173043000],
         }
 
         user_config = json.loads(os.getenv("PING_FINDER_CONFIG", "{}"))
         return {**default_config, **user_config}
+
+    def get_config_path(self) -> Path:
+        for mount_point in ("/media", "/mnt"):
+            for path in Path(mount_point).glob("*"):
+                if path.is_mount():
+                    file_path = path / config_file.ini
+                    if file_path.exists() and file_path.is_file():
+                        return file_path
+        return None
 
     def _get_output_dir(self) -> Path:
         for mount_point in ("/media", "/mnt"):
