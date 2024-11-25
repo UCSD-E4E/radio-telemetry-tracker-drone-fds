@@ -135,6 +135,12 @@ Enable field modifications by using a `ping_finder_config.json` on a USB stick.
     exit
     ```
 
+3. **Code Formatting with Ruff:**
+    ```bash
+    poetry run ruff check --unsafe-fixes --fix
+    ```
+    *Use this command to automatically fix code style issues.*
+
 ## Automatic Startup
 
 To ensure the application runs automatically on system startup, you can create a **systemd** service.
