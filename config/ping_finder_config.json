@@ -4,7 +4,6 @@
   "center_frequency": 173500000,
   "run_num": 1,
   "enable_test_data": false,
-  "output_dir": "/media/usbstick/rtt_output/",
   "ping_width_ms": 25,
   "ping_min_snr": 25,
   "ping_max_len_mult": 1.5,

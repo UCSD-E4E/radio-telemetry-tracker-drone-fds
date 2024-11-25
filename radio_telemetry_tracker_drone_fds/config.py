@@ -82,21 +82,17 @@ class Config:
         with config_path.open() as f:
             config = json.load(f)
 
-        self._validate_config_fields(config)
+        self._validate_config_data(config)
         self._validate_target_frequencies(config)
         self._validate_numeric_ranges(config)
 
         return config
 
-    def _validate_config_fields(self, config: dict[str, Any]) -> None:
-        """Validate required fields and their types in the configuration.
+    def _validate_config_data(self, config_data: dict[str, Any]) -> None:
+        """Validate configuration data.
 
         Args:
-            config: Configuration dictionary to validate
-
-        Raises:
-            KeyError: If required field is missing
-            TypeError: If field has wrong type
+            config_data: Configuration dictionary to validate
         """
         required_fields = {
             "gain": float,
@@ -104,7 +100,6 @@ class Config:
             "center_frequency": int,
             "run_num": int,
             "enable_test_data": bool,
-            "output_dir": str,
             "ping_width_ms": int,
             "ping_min_snr": int,
             "ping_max_len_mult": float,
@@ -112,16 +107,23 @@ class Config:
             "target_frequencies": list,
         }
 
-        for field, expected_type in required_fields.items():
-            if field not in config:
-                msg = f"Missing required field in ping_finder_config.json: {field}"
+        def validate_field(field: str, expected_type: type) -> None:
+            if field not in config_data:
+                msg = f"Missing required field: {field}"
                 raise KeyError(msg)
-            if not isinstance(config[field], expected_type):
-                msg = (
-                    f"Field {field} must be of type {expected_type.__name__}, "
-                    f"got {type(config[field]).__name__}"
-                )
+            if not isinstance(config_data[field], expected_type):
+                msg = f"Field {field} must be of type {expected_type.__name__}, got {type(config_data[field]).__name__}"
                 raise TypeError(msg)
+
+        for field, expected_type in required_fields.items():
+            validate_field(field, expected_type)
+
+        if not config_data["target_frequencies"]:
+            msg = "target_frequencies list cannot be empty"
+            raise ValueError(msg)
+        if not all(isinstance(freq, int) for freq in config_data["target_frequencies"]):
+            msg = "All target_frequencies must be integers"
+            raise ValueError(msg)
 
     def _validate_target_frequencies(self, config: dict[str, Any]) -> None:
         """Validate target frequencies configuration.

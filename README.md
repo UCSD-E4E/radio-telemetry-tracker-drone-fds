@@ -74,7 +74,7 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed
     ```
 
 ### PingFinder Configuration via USB
-Enable field modifications by using a `ping_finder_config.json` on a USB stick.
+The application requires a `ping_finder_config.json` file on a USB stick to operate. This configuration file must be present when starting the application.
 
 1. **Prepare USB Stick:**
     - Format as FAT32.
@@ -86,7 +86,6 @@ Enable field modifications by using a `ping_finder_config.json` on a USB stick.
           "center_frequency": 173500000,
           "run_num": 1,
           "enable_test_data": false,
-          "output_dir": "./rtt_output/",
           "ping_width_ms": 25,
           "ping_min_snr": 25,
           "ping_max_len_mult": 1.5,
@@ -116,10 +115,11 @@ Enable field modifications by using a `ping_finder_config.json` on a USB stick.
         sudo mount -a
         ```
 
-3. **Using Multiple USB Sticks:**
-    - Format each as FAT32 and label uniquely.
-    - Add each UUID to `/etc/fstab` with `nofail` option.
-    - Ensure all sticks contain `ping_finder_config.json`.
+**Important Notes:**
+- The USB stick must remain inserted during the entire operation of the program
+- The configuration is read once at startup
+- If you need to change the configuration, you must restart the application
+- Output files will be saved in an `rtt_output` directory next to your configuration file
 
 ## Usage
 
