@@ -44,7 +44,11 @@ class GPSModule:
         """Update the GPS state and log the change."""
         current_state = self.get_gps_data()[1]
         if new_state != current_state:
-            self._logger.info(f"GPS State changed from {current_state} to {new_state}")
+            self._logger.info(
+                "GPS State changed from %s to %s",
+                current_state,
+                new_state,
+            )
             update_gps_state(new_state)
 
     def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
@@ -54,8 +58,8 @@ class GPSModule:
                 0xFF,
                 total_length,
             )
-        except OSError as e:
-            self._logger.error(f"Error reading GPS data: {e}")
+        except OSError:
+            self._logger.exception("Error reading GPS data")
             self._error_count += 1
             if self._error_count >= self._max_errors:
                 self._update_gps_state(GPSState.ERRORED)
@@ -170,18 +174,22 @@ class GPSModule:
         """Continuously read and process GPS data."""
         self._logger.info("Starting GPS data acquisition loop")
         self._update_gps_state(GPSState.WAITING)
+
         while self._running:
+            data = None
             try:
                 data = self._read_gps_data(32)
-                if data:
-                    self._buffer += "".join(chr(c) for c in data)
-                    self._buffer = self._process_buffer()
-                else:
-                    self._logger.debug("No GPS data received")
-                    time.sleep(self.GPS_RETRY_INTERVAL)
-            except Exception as e:
-                self._logger.error(f"Unexpected error in GPS data acquisition: {e}")
+            except Exception:
+                self._logger.exception("Unexpected error in GPS data acquisition")
                 self._update_gps_state(GPSState.ERRORED)
+                time.sleep(self.GPS_RETRY_INTERVAL)
+                continue
+
+            if data:
+                self._buffer += "".join(chr(c) for c in data)
+                self._buffer = self._process_buffer()
+            else:
+                self._logger.debug("No GPS data received")
                 time.sleep(self.GPS_RETRY_INTERVAL)
 
     def get_gps_data(self) -> tuple[GPSData, GPSState]:

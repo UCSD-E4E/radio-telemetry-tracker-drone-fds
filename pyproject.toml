@@ -10,16 +10,26 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.12"
 smbus2 = "^0.4.3"
-rct_dsp2 = { path = "/workspace/radio_collar_tracker_dsp2" }
 aioconsole = "^0.8.0"
 psutil = "^6.0.0"
-
-[tool.poetry.dev-dependencies]
-ruff = "^0.6.3"
-black = "^24.8.0"
+rct-dsp2 = {git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1"}
+watchdog = "^6.0.0"
+typing-extensions = "^4.12.2"
 
 [tool.poetry.scripts]
-rttDroneFDS = "radio_telemetry_tracker_drone_fds.main:main"
+radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.8.0"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [build-system]
 requires = ["poetry-core"]

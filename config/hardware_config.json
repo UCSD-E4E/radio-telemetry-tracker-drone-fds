@@ -1,0 +1,4 @@
+{
+  "GPS_I2C_BUS": 1,
+  "GPS_ADDRESS": "0x42"
+}

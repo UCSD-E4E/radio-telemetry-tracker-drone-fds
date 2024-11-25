@@ -7,12 +7,11 @@ import datetime as dt
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rct_dsp2 import PingFinder
 from rct_dsp2.localization import LocationEstimator
 
-from radio_telemetry_tracker_drone_fds.config import config
 from radio_telemetry_tracker_drone_fds.drone_state import (
     PingFinderState,
     update_ping_finder_state,
@@ -25,34 +24,37 @@ if TYPE_CHECKING:
 class PingFinderModule:
     """Handles ping finding operations using SDR."""
 
-    def __init__(self, gps_module: GPSModule) -> None:
-        """Initialize PingFinderModule with configured PingFinder and GPSModule."""
+    def __init__(self, gps_module: GPSModule, config: dict[str, Any]) -> None:
+        """Initialize PingFinderModule with configured PingFinder and GPSModule.
+
+        Args:
+            gps_module (GPSModule): The GPS module instance.
+            config (Dict[str, Any]): Configuration dictionary for PingFinder.
+        """
         self._gps_module = gps_module
         self._ping_finder = PingFinder()
-        self._configure_ping_finder()
+        self._configure_ping_finder(config)
         self._stop_event = threading.Event()
         self._csv_ping_filename = None
         self._csv_estimation_filename = None
         self._csv_writer_ping = None
         self._csv_writer_estimation = None
-        self._run_num = config.PING_FINDER_CONFIG.get("run_num", 1)
-        self._initialize_csv_log()
+        self._run_num = config.get("run_num", 1)
+        self._initialize_csv_log(config)
         self._location_estimator = LocationEstimator(self._get_current_location)
         update_ping_finder_state(PingFinderState.READY)
 
-    def _configure_ping_finder(self) -> None:
-        for key, value in config.PING_FINDER_CONFIG.items():
+    def _configure_ping_finder(self, config: dict[str, Any]) -> None:
+        for key, value in config.items():
             setattr(self._ping_finder, key, value)
         self._ping_finder.register_callback(self._callback)
         self._state = PingFinderState.READY
 
-    def _initialize_csv_log(self) -> None:
-        output_dir = Path(config.PING_FINDER_CONFIG.get("output_dir", "./rtt_output/"))
+    def _initialize_csv_log(self, config: dict[str, Any]) -> None:
+        output_dir = Path(config.get("output_dir", "./rtt_output/"))
         output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
-        self._csv_ping_filename = (
-            output_dir / f"ping_log_{timestamp}_run{self._run_num}.csv"
-        )
+        self._csv_ping_filename = output_dir / f"ping_log_{timestamp}_run{self._run_num}.csv"
         self._csv_estimation_filename = (
             output_dir / f"location_estimation_log_{timestamp}_run{self._run_num}.csv"
         )
@@ -194,7 +196,16 @@ class PingFinderModule:
 
     def _get_current_location(
         self,
+        _: dt.datetime | None = None,
     ) -> tuple[float, float, float]:
+        """Get current GPS location.
+
+        Args:
+            _: Optional timestamp parameter (unused but required by LocationEstimator)
+
+        Returns:
+            Tuple of (longitude, latitude, altitude)
+        """
         gps_data, _ = self._gps_module.get_gps_data()
         return (
             gps_data.longitude,
