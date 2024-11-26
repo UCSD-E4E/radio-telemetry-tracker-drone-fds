@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +67,25 @@ class Config:
 
         return config
 
+    def _find_ping_finder_config(self) -> tuple[Path | None, Path | None]:
+        """Find ping_finder_config.json in mounted USB directory.
+
+        Returns:
+            tuple[Path | None, Path | None]: Tuple of (config file path, output directory path) if found,
+                                           else (None, None)
+        """
+        logger.debug("Starting search for ping_finder_config.json")
+
+        # Check specific mount point
+        config_path = Path(f"/media/{os.getenv('USER')}/usb/ping_finder_config.json")
+        if config_path.exists():
+            output_dir = config_path.parent / "rtt_output"
+            logger.info("Found config file: %s", config_path)
+            return config_path, output_dir
+
+        logger.warning("ping_finder_config.json not found at %s", config_path)
+        return None, None
+
     def _load_ping_finder_config(self) -> dict[str, Any]:
         """Load PingFinder configuration from USB stick.
 
@@ -76,7 +96,7 @@ class Config:
         """
         config_path, _ = self._find_ping_finder_config()
         if not config_path:
-            msg = "ping_finder_config.json not found in USB mount point (/media/usbstick)"
+            msg = "ping_finder_config.json not found in any USB mount points"
             raise FileNotFoundError(msg)
 
         with config_path.open() as f:
@@ -164,37 +184,6 @@ class Config:
             if config[field] <= 0:
                 msg = f"{field} must be positive"
                 raise ValueError(msg)
-
-    def _find_ping_finder_config(self) -> tuple[Path | None, Path | None]:
-        """Find ping_finder_config.json in /media directory.
-
-        Returns:
-            tuple[Path | None, Path | None]: Tuple of (config file path, output directory path) if found,
-                                           else (None, None)
-        """
-        logger.debug("Starting search for ping_finder_config.json")
-
-        media_path = Path("/media/usbstick")
-        if not media_path.exists():
-            logger.debug("Mount point /media/usbstick does not exist")
-            return None, None
-
-        config_file = media_path / "ping_finder_config.json"
-        if config_file.exists():
-            # Create output directory next to config file
-            output_dir = config_file.parent / "rtt_output"
-            logger.info("Found config file: %s", config_file)
-            return config_file, output_dir
-
-        # More detailed error message
-        files = list(media_path.glob("*"))
-        if files:
-            logger.warning("Files found in /media/usbstick: %s", ", ".join(str(f) for f in files))
-        else:
-            logger.warning("/media/usbstick is empty")
-
-        logger.warning("ping_finder_config.json not found in /media/usbstick")
-        return None, None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the configuration to a dictionary."""

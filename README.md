@@ -4,6 +4,9 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
+  - [Hardware Requirements](#hardware-requirements)
+  - [System Requirements](#system-requirements)
+  - [System Dependencies](#system-dependencies)
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [Hardware Configuration](#hardware-configuration)
@@ -14,112 +17,127 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed
 - [License](#license)
 
 ## Prerequisites
+
+### Hardware Requirements
+
+#### Required Components
+- **Single Board Computer:** UP 7000 Series (tested with UP 7000)
+- **Software Defined Radio:** USRP B200mini-i (connected via USB)
+- **GPS Module:** Sparkfun NEO-M9N (connected via I2C bus 1)
+- **Storage:** USB Flash Drive (FAT32 formatted)
+
+#### Connection Details
+- **SDR Connection:** USB 3.0 port
+- **GPS Connection:** I2C Bus 1
+  - SDA: Pin XX
+  - SCL: Pin XX
+  - VCC: 3.3V
+  - GND: Ground
+- **USB Storage:** Any available USB port
+
+### System Requirements
 - **Operating System:** Ubuntu 24.04 or later (24.04.1 tested)
 - **Python:** 3.12 or later (3.12.7 tested)
 - **Poetry:** 1.8 or later (1.8.4 tested)
-- **Dependencies:** 
-  - `fftw-dev`
-  - `libboost-all-dev`
-  - `libuhd-dev`
-  - `uhd-host`
-  - `libairspy-dev`
-  - `libhackrf-dev`
-  - `cmake`
-  - `build-essential`
+
+### System Dependencies
+```bash
+sudo add-apt-repository ppa:ettusresearch/uhd
+sudo apt update
+sudo apt install -y \
+    fftw-dev \
+    libboost-all-dev \
+    libuhd-dev \
+    uhd-host \
+    libairspy-dev \
+    libhackrf-dev \
+    cmake \
+    build-essential \
+    udisks2  # Required for USB automounting
+sudo uhd_images_downloader
+```
 
 ## Installation
 
-1. **Install System Dependencies:**
-    ```bash
-    sudo add-apt-repository ppa:ettusresearch/uhd
-    sudo apt update
-    sudo apt install -y fftw-dev libboost-all-dev libuhd-dev uhd-host libairspy-dev libhackrf-dev cmake build-essential
-    sudo uhd_images_downloader
-    ```
+### 1. Hardware Setup
+```bash
+# Add user to i2c group for GPS access
+sudo groupadd -f i2c
+sudo usermod -aG i2c $USER
 
-2. **Set Up Hardware Permissions:**
-    ```bash
-    # Add user to i2c group
-    getent group i2c || sudo groupadd i2c
-    sudo usermod -aG i2c $USER
+# Create udev rules for I2C permissions
+sudo tee /etc/udev/rules.d/99-i2c.rules <<EOF
+KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"
+EOF
 
-    # Create udev rules
-    sudo tee /etc/udev/rules.d/99-i2c.rules <<EOF
-    KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"
-    EOF
+# Apply changes
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
-    sudo udevadm control --reload-rules
-    sudo udevadm trigger
+# Note: Log out and back in for group changes to take effect
+```
 
-    # Re-login for changes to take effect
-    ```
-
-3. **Clone Repository and Install Python Dependencies:**
-    ```bash
-    git clone https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-fds.git
-    cd radio-telemetry-tracker-drone-fds
-    poetry install
-    ```
+### 2. Software Installation
+```bash
+# Clone and install
+git clone https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-fds.git
+cd radio-telemetry-tracker-drone-fds
+poetry install
+```
 
 ## Configuration
 
 ### Hardware Configuration
-- **File:** `./config/hardware_config.json`
-- **Example:**
-    ```json
-    {
-        "GPS_I2C_BUS": 1,
-        "GPS_ADDRESS": "0x42"
-    }
-    ```
+Create or modify `./config/hardware_config.json`:
+```json
+{
+    "GPS_I2C_BUS": 1,
+    "GPS_ADDRESS": "0x42"
+}
+```
 
-### PingFinder Configuration via USB
-The application requires a `ping_finder_config.json` file on a USB stick to operate. This configuration file must be present when starting the application.
+### USB Configuration
+1. **Create Automount Service:**
+```bash
+sudo tee /etc/systemd/system/usb-automount.service <<EOF
+[Unit]
+Description=USB Automount Service
+After=udisks2.service
 
-1. **Prepare USB Stick:**
-    - Format as FAT32.
-    - Create `ping_finder_config.json` at root:
-        ```json
-        {
-          "gain": 56.0,
-          "sampling_rate": 2500000,
-          "center_frequency": 173500000,
-          "run_num": 1,
-          "enable_test_data": false,
-          "ping_width_ms": 25,
-          "ping_min_snr": 25,
-          "ping_max_len_mult": 1.5,
-          "ping_min_len_mult": 0.5,
-          "target_frequencies": [173043000]
-        }
-        ```
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for dev in /dev/sd*1; do mkdir -p /media/$USER/usb && mount -t auto "\$dev" /media/$USER/usb -o "rw,umask=000" || true; done'
+ExecStop=/bin/sh -c 'for dev in /dev/sd*1; do umount /media/$USER/usb || true; done'
+User=root
 
-2. **Mount USB Stick:**
-    - **Create Mount Point:**
-        ```bash
-        sudo mkdir -p /media/usbstick
-        sudo chown $USER:$USER /media/usbstick
-        ```
-    - **Add to fstab:**
-        ```bash
-        # Get USB UUID
-        sudo blkid
+[Install]
+WantedBy=multi-user.target
+EOF
 
-        # Add to /etc/fstab
-        sudo tee -a /etc/fstab <<EOF
-        UUID=XXXX-XXXX    /media/usbstick    vfat    rw,user,exec,umask=000,uid=1000,gid=1000    0    0
-        EOF
-        ```
-    - **Mount USB:**
-        ```bash
-        sudo mount -a
-        ```
+# Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable usb-automount
+sudo systemctl start usb-automount
+```
 
-**Important Notes:**
-- The USB stick must remain inserted during the entire operation of the program
-- The configuration is read once at startup
-- If you need to change the configuration, you must restart the application
-- Output files will be saved in an `rtt_output` directory next to your configuration file
+2. **Prepare USB Configuration:**
+- Format USB drive as FAT32
+- Create `ping_finder_config.json` in the root directory:
+```json
+{
+    "gain": 56.0,
+    "sampling_rate": 2500000,
+    "center_frequency": 173500000,
+    "run_num": 1,
+    "enable_test_data": false,
+    "ping_width_ms": 25,
+    "ping_min_snr": 25,
+    "ping_max_len_mult": 1.5,
+    "ping_min_len_mult": 0.5,
+    "target_frequencies": [173043000]
+}
+```
 
 ## Usage
 

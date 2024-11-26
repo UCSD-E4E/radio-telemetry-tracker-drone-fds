@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -119,7 +120,7 @@ class PingFinderManager:
         """Read and parse configuration file."""
         with self.config_path.open() as f:
             config = json.load(f)
-        
+
         # Add output directory based on config file location
         config["output_dir"] = str(self.config_path.parent / "rtt_output")
         return config
@@ -197,19 +198,14 @@ class PingFinderManager:
 
 
 def find_ping_finder_config() -> Path | None:
-    """Search for ping_finder_config.json on mounted USB directories.
+    """Search for ping_finder_config.json on mounted USB directory.
 
     Returns:
         Path | None: Path to the configuration file if found, else None.
     """
-    for mount_point in [Path("/media"), Path("/mnt")]:
-        if not mount_point.exists():
-            continue
-        for usb_dir in mount_point.iterdir():
-            if usb_dir.is_dir():
-                config_file = usb_dir / "ping_finder_config.json"
-                if config_file.exists():
-                    return config_file
+    config_path = Path(f"/media/{os.getenv('USER')}/usb/ping_finder_config.json")
+    if config_path.exists():
+        return config_path
     return None
 
 
