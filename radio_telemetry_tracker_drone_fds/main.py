@@ -1,15 +1,14 @@
 """Main module for the Radio Telemetry Tracker Drone FDS."""
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
+from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
 from radio_telemetry_tracker_drone_fds.drone_state import PingFinderState
 from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
@@ -95,8 +94,7 @@ class PingFinderManager:
         """Load configuration and start PingFinder module."""
         try:
             config_data = self._read_config_file()
-            self._setup_logging_file(config_data.get("output_dir"))
-            self._validate_config_data(config_data)
+            self._setup_logging_file(config_data.output_dir)
             self.ping_finder_module = PingFinderModule(self.gps_module, config_data)
             self.ping_finder_module.start()
             logger.info("PingFinderModule started with configuration")
@@ -116,14 +114,9 @@ class PingFinderManager:
             self.file_handler.close()
             self.file_handler = None
 
-    def _read_config_file(self) -> dict[str, Any]:
+    def _read_config_file(self) -> PingFinderConfig:
         """Read and parse configuration file."""
-        with self.config_path.open() as f:
-            config = json.load(f)
-
-        # Add output directory based on config file location
-        config["output_dir"] = str(self.config_path.parent / "rtt_output")
-        return config
+        return PingFinderConfig.load_from_file(self.config_path)
 
     def _setup_logging_file(self, output_dir: str | None) -> None:
         """Set up or update the file handler for logging based on output_dir.
@@ -159,43 +152,6 @@ class PingFinderManager:
 
         root_logger.info("Logging to file: %s", log_file_path)
 
-    def _validate_config_data(self, config_data: dict[str, Any]) -> None:
-        """Validate configuration data.
-
-        Args:
-            config_data: Configuration dictionary to validate
-        """
-        required_fields = {
-            "gain": float,
-            "sampling_rate": int,
-            "center_frequency": int,
-            "run_num": int,
-            "enable_test_data": bool,
-            "ping_width_ms": int,
-            "ping_min_snr": int,
-            "ping_max_len_mult": float,
-            "ping_min_len_mult": float,
-            "target_frequencies": list,
-        }
-
-        def validate_field(field: str, expected_type: type) -> None:
-            if field not in config_data:
-                msg = f"Missing required field: {field}"
-                raise KeyError(msg)
-            if not isinstance(config_data[field], expected_type):
-                msg = f"Field {field} must be of type {expected_type.__name__}, got {type(config_data[field]).__name__}"
-                raise TypeError(msg)
-
-        for field, expected_type in required_fields.items():
-            validate_field(field, expected_type)
-
-        if not config_data["target_frequencies"]:
-            msg = "target_frequencies list cannot be empty"
-            raise ValueError(msg)
-        if not all(isinstance(freq, int) for freq in config_data["target_frequencies"]):
-            msg = "All target_frequencies must be integers"
-            raise ValueError(msg)
-
 
 def find_ping_finder_config() -> Path | None:
     """Search for ping_finder_config.json on mounted USB directory.
@@ -209,6 +165,12 @@ def find_ping_finder_config() -> Path | None:
     return None
 
 
+def load_hardware_config() -> HardwareConfig:
+    """Load hardware configuration from a JSON file."""
+    config_path = Path("./config/hardware_config.json")
+    return HardwareConfig.load_from_file(config_path)
+
+
 def run() -> None:
     """Initialize and run the main components of Radio Telemetry Tracker Drone FDS.
 
@@ -218,9 +180,16 @@ def run() -> None:
     setup_logging()
     logger.info("Starting run function")
 
+    # Load hardware configuration
+    try:
+        hardware_config = load_hardware_config()
+    except Exception:
+        logger.exception("Failed to load hardware configuration")
+        sys.exit(1)
+
     # Initialize GPS module
     logger.info("Initializing GPS module")
-    gps_module = GPSModule()
+    gps_module = GPSModule(hardware_config)
 
     logger.info("Starting GPS thread")
     gps_thread = threading.Thread(target=gps_module.run, daemon=True)

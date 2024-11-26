@@ -3,117 +3,85 @@
 from __future__ import annotations
 
 import json
-import logging
-import os
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
-class Config:
-    """Configuration class for radio telemetry tracker drone settings."""
+class ConfigError(Exception):
+    """Custom exception for configuration errors."""
 
-    def __init__(self) -> None:
-        """Initialize the Config object by loading hardware configuration."""
-        hardware_config = self._load_hardware_config()
-        self.GPS_I2C_BUS = hardware_config["GPS_I2C_BUS"]
-        self.GPS_ADDRESS = int(hardware_config["GPS_ADDRESS"], 16)
-        self.PING_FINDER_CONFIG = self._load_ping_finder_config()
+@dataclass
+class HardwareConfig:
+    """Configuration for hardware components."""
 
-    def _load_hardware_config(self) -> dict[str, Any]:
-        """Load hardware configuration from JSON file.
+    GPS_I2C_BUS: int
+    GPS_ADDRESS: int
 
-        Raises:
-            FileNotFoundError: If hardware_config.json is not found
-            KeyError: If required configuration keys are missing
-            ValueError: If configuration values are invalid
-        """
-        config_path = Path("./config/hardware_config.json")
+    @classmethod
+    def load_from_file(cls, path: Path) -> HardwareConfig:
+        """Load hardware configuration from a JSON file."""
+        if not path.exists():
+            msg = f"Hardware configuration file not found at {path}"
+            raise FileNotFoundError(msg)
+        with path.open() as f:
+            data = json.load(f)
+        return cls.from_dict(data)
 
-        if not config_path.exists():
-            msg = "Hardware configuration file not found at ./config/hardware_config.json"
-            raise FileNotFoundError(
-                msg,
-            )
-
-        with config_path.open() as f:
-            config = json.load(f)
-
-        # Validate required fields
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Load hardware configuration from a dictionary."""
         required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS"]
-        missing_fields = [field for field in required_fields if field not in config]
-
+        missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
             msg = f"Missing required fields in hardware_config.json: {', '.join(missing_fields)}"
-            raise KeyError(
-                msg,
-            )
-
-        # Validate field types
-        if not isinstance(config["GPS_I2C_BUS"], int):
+            raise KeyError(msg)
+        if not isinstance(data["GPS_I2C_BUS"], int):
             msg = "GPS_I2C_BUS must be an integer"
             raise TypeError(msg)
-
-        if not isinstance(config["GPS_ADDRESS"], str):
+        if not isinstance(data["GPS_ADDRESS"], str):
             msg = "GPS_ADDRESS must be a string"
             raise TypeError(msg)
-
         try:
-            int(config["GPS_ADDRESS"], 16)
+            gps_address = int(data["GPS_ADDRESS"], 16)
         except ValueError as e:
             msg = "GPS_ADDRESS must be a valid hexadecimal string"
             raise ValueError(msg) from e
+        return cls(GPS_I2C_BUS=data["GPS_I2C_BUS"], GPS_ADDRESS=gps_address)
 
-        return config
+@dataclass
+class PingFinderConfig:
+    """Configuration for the ping finder."""
 
-    def _find_ping_finder_config(self) -> tuple[Path | None, Path | None]:
-        """Find ping_finder_config.json in mounted USB directory.
+    gain: float
+    sampling_rate: int
+    center_frequency: int
+    run_num: int
+    enable_test_data: bool
+    ping_width_ms: int
+    ping_min_snr: int
+    ping_max_len_mult: float
+    ping_min_len_mult: float
+    target_frequencies: list[int]
+    output_dir: str
 
-        Returns:
-            tuple[Path | None, Path | None]: Tuple of (config file path, output directory path) if found,
-                                           else (None, None)
-        """
-        logger.debug("Starting search for ping_finder_config.json")
-
-        # Check specific mount point
-        config_path = Path(f"/media/{os.getenv('USER')}/usb/ping_finder_config.json")
-        if config_path.exists():
-            output_dir = config_path.parent / "rtt_output"
-            logger.info("Found config file: %s", config_path)
-            return config_path, output_dir
-
-        logger.warning("ping_finder_config.json not found at %s", config_path)
-        return None, None
-
-    def _load_ping_finder_config(self) -> dict[str, Any]:
-        """Load PingFinder configuration from USB stick.
-
-        Raises:
-            FileNotFoundError: If ping_finder_config.json is not found
-            KeyError: If required configuration keys are missing
-            ValueError: If configuration values are invalid
-        """
-        config_path, _ = self._find_ping_finder_config()
-        if not config_path:
-            msg = "ping_finder_config.json not found in any USB mount points"
+    @classmethod
+    def load_from_file(cls, path: Path) -> PingFinderConfig:
+        """Load ping finder configuration from a JSON file."""
+        if not path.exists():
+            msg = f"PingFinder configuration file not found at {path}"
             raise FileNotFoundError(msg)
+        with path.open() as f:
+            data = json.load(f)
+        # Add output_dir based on config file location
+        data["output_dir"] = str(path.parent / "rtt_output")
+        return cls.from_dict(data)
 
-        with config_path.open() as f:
-            config = json.load(f)
-
-        self._validate_config_data(config)
-        self._validate_target_frequencies(config)
-        self._validate_numeric_ranges(config)
-
-        return config
-
-    def _validate_config_data(self, config_data: dict[str, Any]) -> None:
-        """Validate configuration data.
-
-        Args:
-            config_data: Configuration dictionary to validate
-        """
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PingFinderConfig:
+        """Load ping finder configuration from a dictionary."""
         required_fields = {
             "gain": float,
             "sampling_rate": int,
@@ -126,72 +94,17 @@ class Config:
             "ping_min_len_mult": float,
             "target_frequencies": list,
         }
-
-        def validate_field(field: str, expected_type: type) -> None:
-            if field not in config_data:
+        for field, expected_type in required_fields.items():
+            if field not in data:
                 msg = f"Missing required field: {field}"
                 raise KeyError(msg)
-            if not isinstance(config_data[field], expected_type):
-                msg = f"Field {field} must be of type {expected_type.__name__}, got {type(config_data[field]).__name__}"
+            if not isinstance(data[field], expected_type):
+                msg = f"Field {field} must be of type {expected_type.__name__}, got {type(data[field]).__name__}"
                 raise TypeError(msg)
-
-        for field, expected_type in required_fields.items():
-            validate_field(field, expected_type)
-
-        if not config_data["target_frequencies"]:
+        if not data["target_frequencies"]:
             msg = "target_frequencies list cannot be empty"
             raise ValueError(msg)
-        if not all(isinstance(freq, int) for freq in config_data["target_frequencies"]):
+        if not all(isinstance(freq, int) for freq in data["target_frequencies"]):
             msg = "All target_frequencies must be integers"
             raise ValueError(msg)
-
-    def _validate_target_frequencies(self, config: dict[str, Any]) -> None:
-        """Validate target frequencies configuration.
-
-        Args:
-            config: Configuration dictionary to validate
-
-        Raises:
-            ValueError: If target frequencies are invalid
-        """
-        if not config["target_frequencies"]:
-            msg = "target_frequencies list cannot be empty"
-            raise ValueError(msg)
-        if not all(isinstance(freq, int) for freq in config["target_frequencies"]):
-            msg = "All target_frequencies must be integers"
-            raise ValueError(msg)
-
-    def _validate_numeric_ranges(self, config: dict[str, Any]) -> None:
-        """Validate numeric ranges in configuration.
-
-        Args:
-            config: Configuration dictionary to validate
-
-        Raises:
-            ValueError: If any numeric value is not positive
-        """
-        positive_fields = [
-            "gain",
-            "sampling_rate",
-            "center_frequency",
-            "ping_width_ms",
-            "ping_min_snr",
-            "ping_max_len_mult",
-            "ping_min_len_mult",
-        ]
-
-        for field in positive_fields:
-            if config[field] <= 0:
-                msg = f"{field} must be positive"
-                raise ValueError(msg)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert the configuration to a dictionary."""
-        return {
-            "GPS_I2C_BUS": self.GPS_I2C_BUS,
-            "GPS_ADDRESS": self.GPS_ADDRESS,
-            "PING_FINDER_CONFIG": self.PING_FINDER_CONFIG,
-        }
-
-
-config = Config()
+        return cls(**data)

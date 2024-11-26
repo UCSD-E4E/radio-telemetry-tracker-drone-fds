@@ -1,19 +1,22 @@
-"""GPS module for handling GPS data acquisition and processing."""
+"""Module for handling GPS data acquisition and processing."""
 
 from __future__ import annotations
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 import smbus2
 
-from radio_telemetry_tracker_drone_fds.config import config
 from radio_telemetry_tracker_drone_fds.drone_state import (
     GPSData,
     GPSState,
     update_gps_data,
     update_gps_state,
 )
+
+if TYPE_CHECKING:
+    from radio_telemetry_tracker_drone_fds.config import HardwareConfig
 
 
 class GPSModule:
@@ -24,13 +27,13 @@ class GPSModule:
     GNRMC_MIN_PARTS = 8
     GNGGA_MIN_PARTS = 10
 
-    def __init__(self) -> None:
+    def __init__(self, hardware_config: HardwareConfig) -> None:
         """Initialize the GPS module with I2C bus and device address."""
         logging.basicConfig(level=logging.INFO)
         self._logger = logging.getLogger(__name__)
         self._logger.debug("Initializing GPSModule")
-        self._i2c_bus = config.GPS_I2C_BUS
-        self._neo_m9n_address = config.GPS_ADDRESS
+        self._i2c_bus = hardware_config.GPS_I2C_BUS
+        self._neo_m9n_address = hardware_config.GPS_ADDRESS
         self._bus = smbus2.SMBus(self._i2c_bus)
         self._buffer = ""
         self._running = True
@@ -176,15 +179,7 @@ class GPSModule:
         self._update_gps_state(GPSState.WAITING)
 
         while self._running:
-            data = None
-            try:
-                data = self._read_gps_data(32)
-            except Exception:
-                self._logger.exception("Unexpected error in GPS data acquisition")
-                self._update_gps_state(GPSState.ERRORED)
-                time.sleep(self.GPS_RETRY_INTERVAL)
-                continue
-
+            data = self._read_gps_data(32)
             if data:
                 self._buffer += "".join(chr(c) for c in data)
                 self._buffer = self._process_buffer()
