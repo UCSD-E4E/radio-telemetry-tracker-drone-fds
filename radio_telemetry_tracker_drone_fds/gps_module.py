@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import Optional, List
 
-import smbus2
+import serial
 
 from radio_telemetry_tracker_drone_fds.drone_state import (
     GPSData,
@@ -15,26 +16,63 @@ from radio_telemetry_tracker_drone_fds.drone_state import (
     update_gps_state,
 )
 
-if TYPE_CHECKING:
-    from radio_telemetry_tracker_drone_fds.config import HardwareConfig
+
+class GPSInterface(ABC):
+    """Abstract base class for GPS communication interfaces."""
+
+    @abstractmethod
+    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+        pass
+
+
+class I2CGPSInterface(GPSInterface):
+    """GPS interface using I2C communication."""
+
+    def __init__(self, bus_number: int, address: int):
+        import smbus2
+
+        self._bus = smbus2.SMBus(bus_number)
+        self._address = address
+
+    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+        try:
+            return self._bus.read_i2c_block_data(self._address, 0xFF, total_length)
+        except OSError:
+            logging.exception("Error reading GPS data over I2C")
+            return None
+
+
+class SerialGPSInterface(GPSInterface):
+    """GPS interface using Serial communication."""
+
+    def __init__(self, port: str, baudrate: int):
+        import serial
+
+        self._serial_port = serial.Serial(port, baudrate, timeout=1)
+
+    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+        try:
+            data = self._serial_port.read(total_length)
+            return list(data)
+        except serial.SerialException:
+            logging.exception("Error reading GPS data over Serial")
+            return None
 
 
 class GPSModule:
-    """Handles GPS data acquisition and processing using I2C communication."""
+    """Handles GPS data acquisition and processing using a GPS interface."""
 
     GPS_DATA_TIMEOUT = 5  # seconds
     GPS_RETRY_INTERVAL = 1  # seconds
     GNRMC_MIN_PARTS = 8
     GNGGA_MIN_PARTS = 10
 
-    def __init__(self, hardware_config: HardwareConfig) -> None:
-        """Initialize the GPS module with I2C bus and device address."""
+    def __init__(self, gps_interface: GPSInterface) -> None:
+        """Initialize the GPS module with a GPS interface."""
         logging.basicConfig(level=logging.INFO)
         self._logger = logging.getLogger(__name__)
         self._logger.debug("Initializing GPSModule")
-        self._i2c_bus = hardware_config.GPS_I2C_BUS
-        self._neo_m9n_address = hardware_config.GPS_ADDRESS
-        self._bus = smbus2.SMBus(self._i2c_bus)
+        self._gps_interface = gps_interface
         self._buffer = ""
         self._running = True
         self._last_update_time = 0
@@ -54,19 +92,14 @@ class GPSModule:
             )
             update_gps_state(new_state)
 
-    def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
-        try:
-            return self._bus.read_i2c_block_data(
-                self._neo_m9n_address,
-                0xFF,
-                total_length,
-            )
-        except OSError:
-            self._logger.exception("Error reading GPS data")
+    def _read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+        data = self._gps_interface.read_gps_data(total_length)
+        if data is None:
+            self._logger.debug("No GPS data received")
             self._error_count += 1
             if self._error_count >= self._max_errors:
                 self._update_gps_state(GPSState.ERRORED)
-            return None
+        return data
 
     def _process_buffer(self) -> str:
         sentences = self._buffer.split("\n")

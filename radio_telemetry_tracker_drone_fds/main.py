@@ -10,7 +10,11 @@ from pathlib import Path
 
 from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
 from radio_telemetry_tracker_drone_fds.drone_state import PingFinderState
-from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
+from radio_telemetry_tracker_drone_fds.gps_module import (
+    GPSModule,
+    I2CGPSInterface,
+    SerialGPSInterface,
+)
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
 
 logger = logging.getLogger(__name__)
@@ -187,9 +191,18 @@ def run() -> None:
         logger.exception("Failed to load hardware configuration")
         sys.exit(1)
 
+    # Initialize GPS interface
+    if hardware_config.GPS_INTERFACE.upper() == "I2C":
+        gps_interface = I2CGPSInterface(hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS)
+    elif hardware_config.GPS_INTERFACE.upper() == "SERIAL":
+        gps_interface = SerialGPSInterface(hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE)
+    else:
+        logger.error(f"Unsupported GPS interface: {hardware_config.GPS_INTERFACE}")
+        sys.exit(1)
+
     # Initialize GPS module
     logger.info("Initializing GPS module")
-    gps_module = GPSModule(hardware_config)
+    gps_module = GPSModule(gps_interface)
 
     logger.info("Starting GPS thread")
     gps_thread = threading.Thread(target=gps_module.run, daemon=True)
