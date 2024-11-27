@@ -14,6 +14,7 @@ from radio_telemetry_tracker_drone_fds.gps_module import (
     GPSModule,
     I2CGPSInterface,
     SerialGPSInterface,
+    SimulatedGPSInterface,
 )
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
 
@@ -63,10 +64,16 @@ def print_heartbeat(
     """Continuously print GPS and PingFinder status information."""
     while True:
         gps_data, gps_state = gps_module.get_gps_data()
-        ping_finder_state = ping_finder_module.get_state() if ping_finder_module else "Not Available"
+        ping_finder_state = (
+            ping_finder_module.get_state() if ping_finder_module else "Not Available"
+        )
 
         logger.info("GPS State: %s", gps_state.value)
-        state_str = ping_finder_state.value if isinstance(ping_finder_state, PingFinderState) else ping_finder_state
+        state_str = (
+            ping_finder_state.value
+            if isinstance(ping_finder_state, PingFinderState)
+            else ping_finder_state
+        )
         logger.info("PingFinder State: %s", state_str)
         logger.info(
             "GPS Data: Lat: %s, Lon: %s, Alt: %s",
@@ -192,12 +199,19 @@ def run() -> None:
         sys.exit(1)
 
     # Initialize GPS interface
-    if hardware_config.GPS_INTERFACE.upper() == "I2C":
-        gps_interface = I2CGPSInterface(hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS)
-    elif hardware_config.GPS_INTERFACE.upper() == "SERIAL":
-        gps_interface = SerialGPSInterface(hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE)
+    gps_interface_type = hardware_config.GPS_INTERFACE.upper()
+    if gps_interface_type == "I2C":
+        gps_interface = I2CGPSInterface(
+            hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS,
+        )
+    elif gps_interface_type == "SERIAL":
+        gps_interface = SerialGPSInterface(
+            hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE,
+        )
+    elif gps_interface_type == "SIMULATED":
+        gps_interface = SimulatedGPSInterface(hardware_config.GPS_SIMULATION_SPEED)
     else:
-        logger.error(f"Unsupported GPS interface: {hardware_config.GPS_INTERFACE}")
+        logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
         sys.exit(1)
 
     # Initialize GPS module
@@ -252,3 +266,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from enum import Enum
+from typing import TYPE_CHECKING
 
 import serial
 
@@ -16,25 +17,55 @@ from radio_telemetry_tracker_drone_fds.drone_state import (
     update_gps_state,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+
+class CoordinateType(Enum):
+    """Type of GPS coordinate."""
+    LATITUDE = "latitude"
+    LONGITUDE = "longitude"
+
 
 class GPSInterface(ABC):
     """Abstract base class for GPS communication interfaces."""
 
     @abstractmethod
-    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
-        pass
+    def read_gps_data(self, total_length: int = 32) -> list[int] | None:
+        """Read GPS data from the interface.
+
+        Args:
+            total_length: Number of bytes to read.
+
+        Returns:
+            List of integers representing the GPS data, or None if read failed.
+        """
 
 
 class I2CGPSInterface(GPSInterface):
     """GPS interface using I2C communication."""
 
-    def __init__(self, bus_number: int, address: int):
+    def __init__(self, bus_number: int, address: int) -> None:
+        """Initialize I2C GPS interface.
+
+        Args:
+            bus_number: I2C bus number.
+            address: I2C device address.
+        """
         import smbus2
 
         self._bus = smbus2.SMBus(bus_number)
         self._address = address
 
-    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+    def read_gps_data(self, total_length: int = 32) -> list[int] | None:
+        """Read GPS data from I2C interface.
+
+        Args:
+            total_length: Number of bytes to read.
+
+        Returns:
+            List of integers representing the GPS data, or None if read failed.
+        """
         try:
             return self._bus.read_i2c_block_data(self._address, 0xFF, total_length)
         except OSError:
@@ -45,17 +76,109 @@ class I2CGPSInterface(GPSInterface):
 class SerialGPSInterface(GPSInterface):
     """GPS interface using Serial communication."""
 
-    def __init__(self, port: str, baudrate: int):
+    def __init__(self, port: str, baudrate: int) -> None:
+        """Initialize Serial GPS interface.
+
+        Args:
+            port: Serial port name.
+            baudrate: Serial communication speed.
+        """
         import serial
 
         self._serial_port = serial.Serial(port, baudrate, timeout=1)
 
-    def read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+    def read_gps_data(self, total_length: int = 32) -> list[int] | None:
+        """Read GPS data from Serial interface.
+
+        Args:
+            total_length: Number of bytes to read.
+
+        Returns:
+            List of integers representing the GPS data, or None if read failed.
+        """
         try:
             data = self._serial_port.read(total_length)
             return list(data)
         except serial.SerialException:
             logging.exception("Error reading GPS data over Serial")
+            return None
+
+class SimulatedGPSInterface(GPSInterface):
+    """GPS interface using simulated data."""
+
+    def __init__(self, simulation_speed: float = 1.0) -> None:
+        """Initialize Simulated GPS interface.
+
+        Args:
+            simulation_speed: Speed multiplier for simulation.
+        """
+        self._simulation_speed = simulation_speed
+        self._start_time = time.time()
+        self._data_generator = self._generate_simulated_data()
+
+    def _generate_simulated_data(self) -> Generator[list[int], None, None]:
+        """Generate simulated GPS data.
+
+        Yields:
+            Lists of integers representing the GPS data.
+        """
+        lat = 32.7157  # Starting latitude (e.g., San Diego, CA)
+        lon = -117.1611  # Starting longitude
+        altitude = 20  # Starting altitude
+        while True:
+            elapsed_time = (time.time() - self._start_time) * self._simulation_speed
+            current_lat = lat + 0.0001 * elapsed_time
+            current_lon = lon + 0.0001 * elapsed_time
+            current_alt = altitude + 0.01 * elapsed_time  # Ascend at 0.1m/s
+
+            # Create NMEA sentences
+            gngga = (
+                f"$GNGGA,123519,{self._format_coordinate(current_lat, CoordinateType.LATITUDE)},N,"
+                f"{self._format_coordinate(current_lon, CoordinateType.LONGITUDE)},W,"
+                f"1,08,0.9,{current_alt},M,0.0,M,,*47"
+            )
+            gnrmc = (
+                f"$GNRMC,123519,A,{self._format_coordinate(current_lat, CoordinateType.LATITUDE)},N,"
+                f"{self._format_coordinate(current_lon, CoordinateType.LONGITUDE)},W,"
+                f"0.5,054.7,181194,020.3,E*68"
+            )
+
+            sentences = gngga + "\n" + gnrmc + "\n"
+            yield [ord(c) for c in sentences]
+            time.sleep(1 / self._simulation_speed)
+
+    def _format_coordinate(self, value: float, coordinate_type: CoordinateType) -> str:
+        """Format coordinate value into NMEA format.
+
+        Args:
+            value: The coordinate value in decimal degrees.
+            coordinate_type: Type of coordinate (latitude or longitude).
+
+        Returns:
+            Formatted coordinate string in NMEA format.
+        """
+        # Handle negative values properly
+        abs_value = abs(value)
+
+        degrees = int(abs_value)
+        minutes = (abs_value - degrees) * 60
+
+        if coordinate_type == CoordinateType.LATITUDE:
+            return f"{degrees:02d}{minutes:07.4f}"
+        return f"{degrees:03d}{minutes:07.4f}"
+
+    def read_gps_data(self, _: int = 128) -> list[int] | None:
+        """Read simulated GPS data.
+
+        Args:
+            _: Unused parameter for interface compatibility.
+
+        Returns:
+            List of integers representing the GPS data, or None if generation failed.
+        """
+        try:
+            return next(self._data_generator)
+        except StopIteration:
             return None
 
 
@@ -92,7 +215,7 @@ class GPSModule:
             )
             update_gps_state(new_state)
 
-    def _read_gps_data(self, total_length: int = 32) -> Optional[List[int]]:
+    def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
         data = self._gps_interface.read_gps_data(total_length)
         if data is None:
             self._logger.debug("No GPS data received")

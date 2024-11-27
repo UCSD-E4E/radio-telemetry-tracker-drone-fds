@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,10 +18,11 @@ class HardwareConfig:
     """Configuration for hardware components."""
 
     GPS_INTERFACE: str
-    GPS_I2C_BUS: Optional[int] = None
-    GPS_ADDRESS: Optional[int] = None
-    GPS_SERIAL_PORT: Optional[str] = None
-    GPS_SERIAL_BAUDRATE: Optional[int] = None
+    GPS_I2C_BUS: int | None = None
+    GPS_ADDRESS: int | None = None
+    GPS_SERIAL_PORT: str | None = None
+    GPS_SERIAL_BAUDRATE: int | None = None
+    GPS_SIMULATION_SPEED: float = 1.0
 
     @classmethod
     def load_from_file(cls, path: Path) -> HardwareConfig:
@@ -37,43 +38,79 @@ class HardwareConfig:
     def from_dict(cls, data: dict[str, Any]) -> HardwareConfig:
         """Load hardware configuration from a dictionary."""
         if "GPS_INTERFACE" not in data:
-            raise KeyError("Missing required field: GPS_INTERFACE")
-        
-        gps_interface = data["GPS_INTERFACE"]
+            msg = "Missing required field: GPS_INTERFACE"
+            raise KeyError(msg)
+
+        gps_interface = data["GPS_INTERFACE"].upper()
         if gps_interface == "I2C":
-            required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS"]
-            missing_fields = [field for field in required_fields if field not in data]
-            if missing_fields:
-                msg = f"Missing required fields in hardware_config.json for I2C interface: {', '.join(missing_fields)}"
-                raise KeyError(msg)
-            if not isinstance(data["GPS_I2C_BUS"], int):
-                msg = "GPS_I2C_BUS must be an integer"
-                raise TypeError(msg)
-            if not isinstance(data["GPS_ADDRESS"], str):
-                msg = "GPS_ADDRESS must be a string"
-                raise TypeError(msg)
-            try:
-                gps_address = int(data["GPS_ADDRESS"], 16)
-            except ValueError as e:
-                msg = "GPS_ADDRESS must be a valid hexadecimal string"
-                raise ValueError(msg) from e
-            return cls(GPS_INTERFACE=gps_interface, GPS_I2C_BUS=data["GPS_I2C_BUS"], GPS_ADDRESS=gps_address)
-        elif gps_interface == "SERIAL":
-            required_fields = ["GPS_SERIAL_PORT", "GPS_SERIAL_BAUDRATE"]
-            missing_fields = [field for field in required_fields if field not in data]
-            if missing_fields:
-                msg = f"Missing required fields in hardware_config.json for Serial interface: {', '.join(missing_fields)}"
-                raise KeyError(msg)
-            if not isinstance(data["GPS_SERIAL_PORT"], str):
-                msg = "GPS_SERIAL_PORT must be a string"
-                raise TypeError(msg)
-            if not isinstance(data["GPS_SERIAL_BAUDRATE"], int):
-                msg = "GPS_SERIAL_BAUDRATE must be an integer"
-                raise TypeError(msg)
-            return cls(GPS_INTERFACE=gps_interface, GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"], GPS_SERIAL_BAUDRATE=data["GPS_SERIAL_BAUDRATE"])
-        else:
-            msg = f"Unsupported GPS_INTERFACE: {gps_interface}"
-            raise ValueError(msg)
+            return cls._create_i2c_config(data)
+        if gps_interface == "SERIAL":
+            return cls._create_serial_config(data)
+        if gps_interface == "SIMULATED":
+            return cls._create_simulation_config(data)
+        msg = f"Unsupported GPS interface: {gps_interface}"
+        raise ValueError(msg)
+
+    @classmethod
+    def _create_i2c_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create I2C configuration from dictionary data."""
+        required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS"]
+        cls._validate_required_fields(data, required_fields, "I2C")
+
+        if not isinstance(data["GPS_I2C_BUS"], int):
+            msg = "GPS_I2C_BUS must be an integer"
+            raise TypeError(msg)
+        if not isinstance(data["GPS_ADDRESS"], str):
+            msg = "GPS_ADDRESS must be a string"
+            raise TypeError(msg)
+
+        try:
+            gps_address = int(data["GPS_ADDRESS"], 16)
+        except ValueError as e:
+            msg = "GPS_ADDRESS must be a valid hexadecimal string"
+            raise ValueError(msg) from e
+
+        return cls(
+            GPS_INTERFACE="I2C",
+            GPS_I2C_BUS=data["GPS_I2C_BUS"],
+            GPS_ADDRESS=gps_address,
+        )
+
+    @classmethod
+    def _create_serial_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create Serial configuration from dictionary data."""
+        required_fields = ["GPS_SERIAL_PORT", "GPS_SERIAL_BAUDRATE"]
+        cls._validate_required_fields(data, required_fields, "Serial")
+
+        if not isinstance(data["GPS_SERIAL_PORT"], str):
+            msg = "GPS_SERIAL_PORT must be a string"
+            raise TypeError(msg)
+        if not isinstance(data["GPS_SERIAL_BAUDRATE"], int):
+            msg = "GPS_SERIAL_BAUDRATE must be an integer"
+            raise TypeError(msg)
+
+        return cls(
+            GPS_INTERFACE="SERIAL",
+            GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"],
+            GPS_SERIAL_BAUDRATE=data["GPS_SERIAL_BAUDRATE"],
+        )
+
+    @classmethod
+    def _create_simulation_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create Simulation configuration from dictionary data."""
+        simulated_speed = data.get("GPS_SIMULATION_SPEED", 1.0)
+        if not isinstance(simulated_speed, (int, float)):
+            msg = "GPS_SIMULATION_SPEED must be a number"
+            raise TypeError(msg)
+        return cls(GPS_INTERFACE="SIMULATED", GPS_SIMULATION_SPEED=simulated_speed)
+
+    @staticmethod
+    def _validate_required_fields(data: dict[str, Any], required_fields: list[str], interface_type: str) -> None:
+        """Validate that all required fields are present in the data."""
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            msg = f"Missing required fields for {interface_type} interface: {', '.join(missing_fields)}"
+            raise KeyError(msg)
 
 @dataclass
 class PingFinderConfig:
