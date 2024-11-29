@@ -14,6 +14,7 @@ aioconsole = "^0.8.0"
 psutil = "^6.0.0"
 rct-dsp2 = {git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1"}
 pyserial = "^3.5"
+pynmea2 = "^1.19.0"
 
 [tool.poetry.scripts]
 radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main"

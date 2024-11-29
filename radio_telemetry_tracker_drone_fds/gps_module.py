@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
 
-import serial
+import pynmea2
 
 from radio_telemetry_tracker_drone_fds.drone_state import (
     GPSData,
@@ -96,12 +97,15 @@ class SerialGPSInterface(GPSInterface):
         Returns:
             List of integers representing the GPS data, or None if read failed.
         """
+        import serial
+
         try:
             data = self._serial_port.read(total_length)
             return list(data)
         except serial.SerialException:
             logging.exception("Error reading GPS data over Serial")
             return None
+
 
 class SimulatedGPSInterface(GPSInterface):
     """GPS interface using simulated data."""
@@ -115,6 +119,7 @@ class SimulatedGPSInterface(GPSInterface):
         self._simulation_speed = simulation_speed
         self._start_time = time.time()
         self._data_generator = self._generate_simulated_data()
+        self._logger = logging.getLogger(__name__)
 
     def _generate_simulated_data(self) -> Generator[list[int], None, None]:
         """Generate simulated GPS data.
@@ -131,41 +136,89 @@ class SimulatedGPSInterface(GPSInterface):
             current_lon = lon + 0.0001 * elapsed_time
             current_alt = altitude + 0.01 * elapsed_time  # Ascend at 0.1m/s
 
-            # Create NMEA sentences
-            gngga = (
-                f"$GNGGA,123519,{self._format_coordinate(current_lat, CoordinateType.LATITUDE)},N,"
-                f"{self._format_coordinate(current_lon, CoordinateType.LONGITUDE)},W,"
-                f"1,08,0.9,{current_alt},M,0.0,M,,*47"
-            )
-            gnrmc = (
-                f"$GNRMC,123519,A,{self._format_coordinate(current_lat, CoordinateType.LATITUDE)},N,"
-                f"{self._format_coordinate(current_lon, CoordinateType.LONGITUDE)},W,"
-                f"0.5,054.7,181194,020.3,E*68"
-            )
+            # Time in HHMMSS format
+            now = dt.datetime.now(tz=dt.timezone.utc)
+            time_str = now.strftime("%H%M%S.%f")[:-3]
 
-            sentences = gngga + "\n" + gnrmc + "\n"
+            # Date in ddmmyy format
+            date_str = now.strftime("%d%m%y")
+
+            # Speed over ground in knots (we can set to a fixed value or calculate)
+            speed_over_ground = "0.5"  # knots
+
+            # Track angle in degrees
+            track_angle = "054.7"
+
+            # Create NMEA sentences using pynmea2
+            try:
+                gga_msg = pynmea2.GGA(
+                    "GP", "GGA", (
+                        time_str,
+                        self._format_nmea_lat_lon(current_lat, "lat"), self._lat_dir(current_lat),
+                        self._format_nmea_lat_lon(current_lon, "lon"), self._lon_dir(current_lon),
+                        "1",  # GPS quality indicator
+                        "08",  # Number of satellites in use
+                        "0.9",  # Horizontal dilution of precision
+                        f"{current_alt:.1f}", "M",  # Altitude above mean sea level
+                        "0.0", "M",  # Height of geoid above WGS84 ellipsoid
+                        "",  # Time since last DGPS update
+                        "",   # DGPS reference station id
+                    ),
+                )
+                gga_sentence = gga_msg.render()
+            except Exception:
+                self._logger.exception("Error creating GGA message")
+                continue
+
+            try:
+                rmc_msg = pynmea2.RMC(
+                    "GP", "RMC", (
+                        time_str,
+                        "A",  # Status
+                        self._format_nmea_lat_lon(current_lat, "lat"), self._lat_dir(current_lat),
+                        self._format_nmea_lat_lon(current_lon, "lon"), self._lon_dir(current_lon),
+                        speed_over_ground,  # Speed over ground in knots
+                        track_angle,  # Track angle in degrees
+                        date_str,  # Date in ddmmyy format
+                        "",  # Magnetic variation
+                        "",   # Magnetic variation direction
+                    ),
+                )
+                rmc_sentence = rmc_msg.render()
+            except Exception:
+                self._logger.exception("Error creating RMC message")
+                continue
+
+            sentences = gga_sentence + "\r\n" + rmc_sentence + "\r\n"
             yield [ord(c) for c in sentences]
             time.sleep(1 / self._simulation_speed)
 
-    def _format_coordinate(self, value: float, coordinate_type: CoordinateType) -> str:
-        """Format coordinate value into NMEA format.
+    def _format_nmea_lat_lon(self, coord: float, coord_type: str) -> str:
+        """Format latitude or longitude in NMEA format.
 
         Args:
-            value: The coordinate value in decimal degrees.
-            coordinate_type: Type of coordinate (latitude or longitude).
+            coord: Coordinate in decimal degrees.
+            coord_type: 'lat' for latitude, 'lon' for longitude.
 
         Returns:
-            Formatted coordinate string in NMEA format.
+            Formatted coordinate string.
         """
-        # Handle negative values properly
-        abs_value = abs(value)
-
-        degrees = int(abs_value)
-        minutes = (abs_value - degrees) * 60
-
-        if coordinate_type == CoordinateType.LATITUDE:
+        if coord_type == "lat":
+            degrees = int(abs(coord))
+            minutes = (abs(coord) - degrees) * 60
             return f"{degrees:02d}{minutes:07.4f}"
-        return f"{degrees:03d}{minutes:07.4f}"
+        if coord_type == "lon":
+            degrees = int(abs(coord))
+            minutes = (abs(coord) - degrees) * 60
+            return f"{degrees:03d}{minutes:07.4f}"
+        msg = "coord_type must be 'lat' or 'lon'"
+        raise ValueError(msg)
+
+    def _lat_dir(self, lat: float) -> str:
+        return "N" if lat >= 0 else "S"
+
+    def _lon_dir(self, lon: float) -> str:
+        return "E" if lon >= 0 else "W"
 
     def read_gps_data(self, _: int = 128) -> list[int] | None:
         """Read simulated GPS data.
@@ -187,8 +240,6 @@ class GPSModule:
 
     GPS_DATA_TIMEOUT = 5  # seconds
     GPS_RETRY_INTERVAL = 1  # seconds
-    GNRMC_MIN_PARTS = 8
-    GNGGA_MIN_PARTS = 10
 
     def __init__(self, gps_interface: GPSInterface) -> None:
         """Initialize the GPS module with a GPS interface."""
@@ -225,8 +276,12 @@ class GPSModule:
         return data
 
     def _process_buffer(self) -> str:
+        """Process the current buffer to extract and parse NMEA sentences."""
         sentences = self._buffer.split("\n")
-        data_updated, new_gps_data = self._process_sentences(sentences[:-1])
+        self._buffer = sentences[-1]  # Keep the incomplete sentence
+        sentences = sentences[:-1]  # Process complete sentences
+
+        data_updated, new_gps_data = self._process_sentences(sentences)
 
         if data_updated and new_gps_data:
             self._update_gps_data(new_gps_data)
@@ -234,63 +289,32 @@ class GPSModule:
         elif time.time() - self._last_update_time > self.GPS_DATA_TIMEOUT:
             self._update_gps_state(GPSState.WAITING)
 
-        return sentences[-1]
+        return self._buffer
 
     def _process_sentences(self, sentences: list[str]) -> tuple[bool, GPSData | None]:
+        """Parse and process a list of NMEA sentences."""
         data_updated = False
-        new_gps_data = None
+        new_gps_data = GPSData()
         for sentence in sentences:
-            if sentence.startswith("$GNRMC"):
-                new_gps_data = self._process_gnrmc(sentence, new_gps_data)
+            stripped_sentence = sentence.strip()
+            if not stripped_sentence:
+                continue
+            try:
+                msg = pynmea2.parse(stripped_sentence)
+                if isinstance(msg, pynmea2.types.talker.GGA):
+                    new_gps_data.altitude = float(msg.altitude) if msg.altitude else None
+                elif isinstance(msg, pynmea2.types.talker.RMC):
+                    new_gps_data.latitude = msg.latitude if msg.latitude else None
+                    new_gps_data.longitude = msg.longitude if msg.longitude else None
+                    new_gps_data.heading = float(msg.true_course) if msg.true_course else None
                 data_updated = True
-            elif sentence.startswith("$GNGGA"):
-                new_gps_data = self._process_gngga(sentence, new_gps_data)
-                data_updated = True
-        return data_updated, new_gps_data
-
-    def _process_gnrmc(
-        self,
-        sentence: str,
-        current_data: GPSData | None,
-    ) -> GPSData | None:
-        parts = sentence.split(",")
-        if len(parts) >= self.GNRMC_MIN_PARTS:
-            lat = self._convert_to_degrees(parts[3], parts[4], is_latitude=True)
-            lon = self._convert_to_degrees(parts[5], parts[6], is_latitude=False)
-            heading = float(parts[8]) if parts[8] else None
-            return GPSData(
-                lat,
-                lon,
-                current_data.altitude if current_data else None,
-                heading,
-            )
-        return current_data
-
-    def _process_gngga(
-        self,
-        sentence: str,
-        current_data: GPSData | None,
-    ) -> GPSData | None:
-        parts = sentence.split(",")
-        if len(parts) >= self.GNGGA_MIN_PARTS:
-            altitude = float(parts[9]) if parts[9] else None
-            if current_data:
-                return GPSData(
-                    current_data.latitude,
-                    current_data.longitude,
-                    altitude,
-                    current_data.heading,
-                )
-            current_gps_data, _ = self.get_gps_data()
-            return GPSData(
-                current_gps_data.latitude,
-                current_gps_data.longitude,
-                altitude,
-                current_gps_data.heading,
-            )
-        return current_data
+            except pynmea2.ParseError:
+                self._logger.warning("Failed to parse NMEA sentence: %s", sentence)
+                continue
+        return data_updated, new_gps_data if data_updated else None
 
     def _update_gps_data(self, new_gps_data: GPSData) -> None:
+        """Update the current GPS data and state."""
         update_gps_data(new_gps_data)
         self._last_update_time = time.time()
 
@@ -315,20 +339,6 @@ class GPSModule:
         else:
             self._update_gps_state(GPSState.WAITING)
 
-    def _convert_to_degrees(
-        self,
-        value: str,
-        direction: str,
-        *,
-        is_latitude: bool,
-    ) -> float:
-        if not value or not direction:
-            return 0.0
-        degrees = float(value[: 2 if is_latitude else 3])
-        minutes = float(value[2 if is_latitude else 3 :])
-        decimal_degrees = degrees + minutes / 60
-        return -decimal_degrees if direction in ["S", "W"] else decimal_degrees
-
     def run(self) -> None:
         """Continuously read and process GPS data."""
         self._logger.info("Starting GPS data acquisition loop")
@@ -337,8 +347,13 @@ class GPSModule:
         while self._running:
             data = self._read_gps_data(32)
             if data:
-                self._buffer += "".join(chr(c) for c in data)
-                self._buffer = self._process_buffer()
+                try:
+                    # Convert list of integers to string
+                    incoming_data = "".join(chr(c) for c in data)
+                    self._buffer += incoming_data
+                    self._buffer = self._process_buffer()
+                except UnicodeDecodeError:
+                    self._logger.warning("Received non-UTF8 data from GPS interface")
             else:
                 self._logger.debug("No GPS data received")
                 time.sleep(self.GPS_RETRY_INTERVAL)
