@@ -12,15 +12,12 @@ from typing import TYPE_CHECKING
 import pynmea2
 import pyproj
 
-from radio_telemetry_tracker_drone_fds.drone_state import (
-    GPSData,
-    GPSState,
-    update_gps_data,
-    update_gps_state,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+    from radio_telemetry_tracker_drone_fds.state_manager import StateManager
+
+from radio_telemetry_tracker_drone_fds.state_manager import GPSData
 
 
 class CoordinateType(Enum):
@@ -242,40 +239,25 @@ class GPSModule:
     GPS_DATA_TIMEOUT = 5  # seconds
     GPS_RETRY_INTERVAL = 1  # seconds
 
-    def __init__(self, gps_interface: GPSInterface, epsg_code: int) -> None:
+    def __init__(self, gps_interface: GPSInterface, epsg_code: int, state_manager: StateManager) -> None:
         """Initialize the GPS module with a GPS interface."""
-        logging.basicConfig(level=logging.INFO)
         self._logger = logging.getLogger(__name__)
-        self._logger.debug("Initializing GPSModule")
         self._gps_interface = gps_interface
+        self._state_manager = state_manager
         self._buffer = ""
         self._running = True
-        self._last_update_time = 0
         self._error_count = 0
         self._max_errors = 5
         self._epsg_code = epsg_code
         self._transformer = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self._epsg_code}", always_xy=True)
-        self._update_gps_state(GPSState.INITIALIZING)
-        update_gps_data(GPSData())
-
-    def _update_gps_state(self, new_state: GPSState) -> None:
-        """Update the GPS state and log the change."""
-        current_state = self.get_gps_data()[1]
-        if new_state != current_state:
-            self._logger.info(
-                "GPS State changed from %s to %s",
-                current_state,
-                new_state,
-            )
-            update_gps_state(new_state)
+        self._state_manager.update_gps_state("initialize")
 
     def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
         data = self._gps_interface.read_gps_data(total_length)
         if data is None:
-            self._logger.debug("No GPS data received")
             self._error_count += 1
             if self._error_count >= self._max_errors:
-                self._update_gps_state(GPSState.ERRORED)
+                self._state_manager.update_gps_state("error")
         return data
 
     def _process_buffer(self) -> str:
@@ -288,9 +270,8 @@ class GPSModule:
 
         if data_updated and new_gps_data:
             self._update_gps_data(new_gps_data)
-            self._error_count = 0  # Reset error count on successful update
         elif time.time() - self._last_update_time > self.GPS_DATA_TIMEOUT:
-            self._update_gps_state(GPSState.WAITING)
+            self._state_manager.update_gps_state("start_acquisition")
 
         return self._buffer
 
@@ -328,62 +309,32 @@ class GPSModule:
             new_gps_data.northing = northing
             new_gps_data.epsg_code = self._epsg_code
 
-        update_gps_data(new_gps_data)
+        self._state_manager.update_gps_data(new_gps_data)
         self._last_update_time = time.time()
 
-        if all(
-            v is not None and v != 0
-            for v in [
-                new_gps_data.latitude,
-                new_gps_data.longitude,
-                new_gps_data.altitude,
-            ]
-        ):
-            self._update_gps_state(GPSState.READY)
-        elif any(
-            v is not None and v != 0
-            for v in [
-                new_gps_data.latitude,
-                new_gps_data.longitude,
-                new_gps_data.altitude,
-            ]
-        ):
-            self._update_gps_state(GPSState.PARTIAL)
-        else:
-            self._update_gps_state(GPSState.WAITING)
+        # Only trigger lock_signal if we're not already in Locked state
+        if new_gps_data.latitude and new_gps_data.longitude:
+            current_state = self._state_manager.get_gps_state()
+            if current_state != "Locked":
+                self._state_manager.update_gps_state("lock_signal")
 
     def run(self) -> None:
         """Continuously read and process GPS data."""
-        self._logger.info("Starting GPS data acquisition loop")
-        self._update_gps_state(GPSState.WAITING)
+        self._state_manager.update_gps_state("start_acquisition")
 
         while self._running:
             data = self._read_gps_data(32)
             if data:
                 try:
-                    # Convert list of integers to string
                     incoming_data = "".join(chr(c) for c in data)
                     self._buffer += incoming_data
                     self._buffer = self._process_buffer()
                 except UnicodeDecodeError:
                     self._logger.warning("Received non-UTF8 data from GPS interface")
             else:
-                self._logger.debug("No GPS data received")
                 time.sleep(self.GPS_RETRY_INTERVAL)
-
-    def get_gps_data(self) -> tuple[GPSData, GPSState]:
-        """Return the current GPS data and state."""
-        from radio_telemetry_tracker_drone_fds.drone_state import get_current_state
-
-        current_state = get_current_state()
-        return current_state.gps_data, current_state.gps_state
 
     def stop(self) -> None:
         """Stop the GPS module's data acquisition loop."""
         self._running = False
-        self._update_gps_state(GPSState.STOPPED)
-
-    def is_ready(self) -> bool:
-        """Check if the GPS module is in READY state."""
-        _, state = self.get_gps_data()
-        return state == GPSState.READY
+        self._state_manager.update_gps_state("reset")

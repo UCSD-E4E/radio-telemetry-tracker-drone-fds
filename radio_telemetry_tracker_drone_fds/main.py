@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 
 from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
-from radio_telemetry_tracker_drone_fds.drone_state import PingFinderState
 from radio_telemetry_tracker_drone_fds.gps_module import (
     GPSModule,
     I2CGPSInterface,
@@ -17,6 +16,7 @@ from radio_telemetry_tracker_drone_fds.gps_module import (
     SimulatedGPSInterface,
 )
 from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
+from radio_telemetry_tracker_drone_fds.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +36,20 @@ def setup_logging() -> None:
     logger.addHandler(console_handler)
 
 
-def wait_for_gps_ready(gps_module: GPSModule, timeout: int = 300) -> bool:
+def wait_for_gps_ready(state_manager: StateManager, timeout: int = 300) -> bool:
     """Wait for GPS module to be ready within the specified timeout.
 
     Args:
         gps_module (GPSModule): The GPS module to check.
+        state_manager (StateManager): The centralized state manager.
         timeout (int, optional): Maximum wait time in seconds. Defaults to 300.
 
     Returns:
         bool: True if GPS is ready, False if timeout occurred.
-
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if gps_module.is_ready():
+        if state_manager.get_gps_state() == "Locked":
             logger.info("GPS is ready.")
             return True
         time.sleep(1)
@@ -58,23 +58,19 @@ def wait_for_gps_ready(gps_module: GPSModule, timeout: int = 300) -> bool:
 
 
 def print_heartbeat(
-    gps_module: GPSModule,
+    state_manager: StateManager,
     ping_finder_module: PingFinderModule | None,
 ) -> None:
     """Continuously print GPS and PingFinder status information."""
     while True:
-        gps_data, gps_state = gps_module.get_gps_data()
+        gps_data = state_manager.get_gps_data()
+        gps_state = state_manager.get_gps_state()
         ping_finder_state = (
-            ping_finder_module.get_state() if ping_finder_module else "Not Available"
+            state_manager.get_ping_finder_state() if ping_finder_module else "Not Available"
         )
 
-        logger.info("GPS State: %s", gps_state.value)
-        state_str = (
-            ping_finder_state.value
-            if isinstance(ping_finder_state, PingFinderState)
-            else ping_finder_state
-        )
-        logger.info("PingFinder State: %s", state_str)
+        logger.info("GPS State: %s", gps_state)
+        logger.info("PingFinder State: %s", ping_finder_state)
         logger.info(
             "GPS Data: Easting: %s, Northing: %s, Altitude: %s, Heading: %s, EPSG Code: %s",
             f"{gps_data.easting:.3f}" if gps_data.easting is not None else "N/A",
@@ -91,15 +87,17 @@ def print_heartbeat(
 class PingFinderManager:
     """Handles PingFinder configuration and operation."""
 
-    def __init__(self, config_path: Path, gps_module: GPSModule) -> None:
+    def __init__(self, config_path: Path, gps_module: GPSModule, state_manager: StateManager) -> None:
         """Initialize the manager.
 
         Args:
             config_path (Path): The path to the ping_finder_config.json file.
             gps_module (GPSModule): The GPS module instance.
+            state_manager (StateManager): Centralized state manager.
         """
         self.config_path = config_path
         self.gps_module = gps_module
+        self.state_manager = state_manager
         self.ping_finder_module: PingFinderModule | None = None
         self.file_handler: logging.Handler | None = None
 
@@ -108,7 +106,7 @@ class PingFinderManager:
         try:
             config_data = self._read_config_file()
             self._setup_logging_file(config_data.output_dir)
-            self.ping_finder_module = PingFinderModule(self.gps_module, config_data)
+            self.ping_finder_module = PingFinderModule(self.gps_module, config_data, self.state_manager)
             self.ping_finder_module.start()
             logger.info("PingFinderModule started with configuration")
         except Exception:
@@ -216,16 +214,19 @@ def run() -> None:
         logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
         sys.exit(1)
 
+    # Initialize StateManager
+    state_manager = StateManager()
+
     # Initialize GPS module
     logger.info("Initializing GPS module")
-    gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE)
+    gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE, state_manager)
 
     logger.info("Starting GPS thread")
     gps_thread = threading.Thread(target=gps_module.run, daemon=True)
     gps_thread.start()
 
     logger.info("Waiting for GPS to be ready")
-    if not wait_for_gps_ready(gps_module):
+    if not wait_for_gps_ready(state_manager):
         logger.error("GPS not ready. Exiting the program.")
         sys.exit(1)
 
@@ -236,7 +237,7 @@ def run() -> None:
         sys.exit(1)
 
     # Initialize and start PingFinder
-    manager = PingFinderManager(initial_config_path, gps_module)
+    manager = PingFinderManager(initial_config_path, gps_module, state_manager)
     try:
         manager.start()
     except Exception:
@@ -247,7 +248,7 @@ def run() -> None:
         # Start the heartbeat in a separate thread
         heartbeat_thread = threading.Thread(
             target=print_heartbeat,
-            args=(gps_module, manager.ping_finder_module),
+            args=(state_manager, manager.ping_finder_module),
             daemon=True,
         )
         heartbeat_thread.start()
@@ -268,4 +269,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

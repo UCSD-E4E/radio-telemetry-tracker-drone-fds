@@ -12,50 +12,49 @@ from typing import TYPE_CHECKING
 from rct_dsp2 import PingFinder
 from rct_dsp2.localization import LocationEstimator
 
-from radio_telemetry_tracker_drone_fds.drone_state import (
-    PingFinderState,
-    update_ping_finder_state,
-)
-
 if TYPE_CHECKING:
     from radio_telemetry_tracker_drone_fds.config import PingFinderConfig
     from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
+    from radio_telemetry_tracker_drone_fds.state_manager import StateManager
 
 
 class PingFinderModule:
     """Handles ping finding operations using SDR."""
 
-    def __init__(self, gps_module: GPSModule, config: PingFinderConfig) -> None:
-        """Initialize PingFinderModule with configured PingFinder and GPSModule.
+    def __init__(self, gps_module: GPSModule, config: PingFinderConfig, state_manager: StateManager) -> None:
+        """Initialize PingFinderModule with configured PingFinder, GPSModule, and StateManager.
 
         Args:
             gps_module (GPSModule): The GPS module instance.
             config (PingFinderConfig): Configuration for PingFinder.
+            state_manager (StateManager): Centralized state manager.
         """
         self._gps_module = gps_module
         self._ping_finder = PingFinder()
+        self._state_manager = state_manager
         self._configure_ping_finder(config)
         self._stop_event = threading.Event()
         self._run_num = config.run_num
         self._initialize_csv_log(config)
         self._location_estimator = LocationEstimator(self._get_current_location)
-        update_ping_finder_state(PingFinderState.READY)
+
+        # Set initial state
+        self._state_manager.update_ping_finder_state("configure")
 
     def _configure_ping_finder(self, config: PingFinderConfig) -> None:
+        """Apply configuration to PingFinder instance."""
         for key, value in config.__dict__.items():
             if hasattr(self._ping_finder, key):
                 setattr(self._ping_finder, key, value)
         self._ping_finder.register_callback(self._callback)
-        self._state = PingFinderState.READY
 
     def _initialize_csv_log(self, config: PingFinderConfig) -> None:
+        """Set up CSV logging for pings and location estimations."""
         output_dir = Path(config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
         self._csv_ping_filename = output_dir / f"ping_log_{timestamp}_run{self._run_num}.csv"
-        self._csv_estimation_filename = (
-            output_dir / f"location_estimation_log_{timestamp}_run{self._run_num}.csv"
-        )
+        self._csv_estimation_filename = output_dir / f"location_estimation_log_{timestamp}_run{self._run_num}.csv"
 
         with self._csv_ping_filename.open("w", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
@@ -82,154 +81,115 @@ class PingFinderModule:
                     "Frequency",
                     "Easting",
                     "Northing",
-                    "Altitude",
                     "EPSG Code",
                 ],
             )
 
-    def _log_ping_to_csv(
-        self,
-        data: tuple[dt.datetime, float, int, float, float, float, float, int],
-    ) -> None:
+    def _log_ping_to_csv(self, data: tuple[dt.datetime, float, int, float, float, float, float, int]) -> None:
+        """Log ping data to CSV."""
         with self._csv_ping_filename.open("a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow([self._run_num, *list(data)])
 
-    def _log_estimation_to_csv(
-        self,
-        data: tuple[dt.datetime, float, float, float, float, int],
-    ) -> None:
+    def _log_estimation_to_csv(self, data: tuple[dt.datetime, float, float, float, float, int]) -> None:
+        """Log location estimation to CSV."""
         with self._csv_estimation_filename.open("a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow([self._run_num, *list(data)])
 
     def _callback(self, now: dt.datetime, amplitude: float, frequency: int) -> None:
+        """Callback invoked by PingFinder when a ping is detected."""
         logging.debug("PingFinderModule._callback called")
-        gps_data, _ = self._gps_module.get_gps_data()
+        gps_data = self._state_manager.get_gps_data()
 
+        # Log ping data to CSV
         self._log_ping_to_csv(
             (
                 now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                 frequency,
                 amplitude,
-                gps_data.latitude if gps_data.latitude is not None else "N/A",
-                gps_data.longitude if gps_data.longitude is not None else "N/A",
+                gps_data.easting if gps_data.easting is not None else "N/A",
+                gps_data.northing if gps_data.northing is not None else "N/A",
                 gps_data.altitude if gps_data.altitude is not None else "N/A",
                 gps_data.heading if gps_data.heading is not None else "N/A",
                 gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
             ),
         )
 
+        # Add ping to location estimator
         self._location_estimator.add_ping(now, amplitude, frequency)
-
         estimate = self._location_estimator.do_estimate(frequency)
 
+        # Log GPS and estimation data
         logging.info("=" * 60)
         logging.info("Timestamp: %s", now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
         logging.info("Frequency: %d Hz", frequency)
         logging.info("Amplitude: %.2f", amplitude)
         logging.info("-" * 60)
         logging.info("GPS Data:")
-        logging.info(
-            f"  Easting:  {gps_data.easting:.2f}"
-            if gps_data.easting is not None
-            else "  Easting:  N/A",
-        )
-        logging.info(
-            f"  Northing:  {gps_data.northing:.2f}"
-            if gps_data.northing is not None
-            else "  Northing: N/A",
-        )
-        logging.info(
-            f"  Altitude:  {gps_data.altitude:.2f}"
-            if gps_data.altitude is not None
-            else "  Altitude:  N/A",
-        )
-        logging.info(
-            f"  Heading:  {gps_data.heading:.2f}"
-            if gps_data.heading is not None
-            else "  Heading:  N/A",
-        )
-        logging.info(
-            f"  EPSG Code:  {gps_data.epsg_code}"
-            if gps_data.epsg_code is not None
-            else "  EPSG Code:  N/A",
-        )
+        logging.info(f"  Easting:  {gps_data.easting:.2f}" if gps_data.easting else "  Easting:  N/A")
+        logging.info(f"  Northing: {gps_data.northing:.2f}" if gps_data.northing else "  Northing: N/A")
+        logging.info(f"  Altitude: {gps_data.altitude:.2f}" if gps_data.altitude else "  Altitude:  N/A")
+        logging.info(f"  Heading:  {gps_data.heading:.2f}" if gps_data.heading else "  Heading:  N/A")
+        logging.info(f"  EPSG Code: {gps_data.epsg_code}" if gps_data.epsg_code else "  EPSG Code:  N/A")
 
         if estimate is not None:
             self._log_estimation_to_csv(
                 (
                     now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     frequency,
-                    *estimate,
+                    estimate[0],  # easting
+                    estimate[1],  # northing
                     gps_data.epsg_code,
                 ),
             )
-
             logging.info("-" * 60)
             logging.info("Estimated Location:")
             logging.info("  Easting:  %.2f", estimate[0])
-            logging.info("  Northing:  %.2f", estimate[1])
-            logging.info("  Altitude:  %.2f", estimate[2])
-
-        logging.info("=" * 60)
+            logging.info("  Northing: %.2f", estimate[1])
+            logging.info("=" * 60)
 
     def start(self) -> None:
         """Start the ping finding operation in a separate thread."""
-        if self.get_state() == PingFinderState.READY:
+        if self._state_manager.get_ping_finder_state() == "Configured":
             self._stop_event.clear()
             self._thread = threading.Thread(target=self._run)
             self._thread.start()
-            update_ping_finder_state(PingFinderState.RUNNING)
+            self._state_manager.update_ping_finder_state("start")
 
     def stop(self) -> None:
         """Stop the ping finding operation."""
-        if self.get_state() == PingFinderState.RUNNING:
+        if self._state_manager.get_ping_finder_state() == "Running":
             self._stop_event.set()
             self._ping_finder.stop()
             if self._thread:
                 self._thread.join()
-            update_ping_finder_state(PingFinderState.STOPPED)
+            self._state_manager.update_ping_finder_state("stop")
 
     def _run(self) -> None:
+        """Ping finding operation loop."""
         try:
             self._ping_finder.start()
             while not self._stop_event.is_set():
                 self._stop_event.wait(0.1)
         except (OSError, RuntimeError):
             logging.exception("PingFinder error")
-            update_ping_finder_state(PingFinderState.ERRORED)
+            self._state_manager.update_ping_finder_state("error")
         finally:
-            if self.get_state() != PingFinderState.ERRORED:
-                update_ping_finder_state(PingFinderState.STOPPED)
+            if self._state_manager.get_ping_finder_state() != "Error":
+                self._state_manager.update_ping_finder_state("stop")
 
-    def get_state(self) -> PingFinderState:
-        """Return the current state of the PingFinderModule."""
-        from radio_telemetry_tracker_drone_fds.drone_state import get_current_state
-
-        return get_current_state().ping_finder_state
-
-    def _get_current_location(
-        self,
-        _: dt.datetime | None = None,
-    ) -> tuple[float, float, float]:
+    def _get_current_location(self, _: dt.datetime | None = None) -> tuple[float, float, float]:
         """Get current GPS location in UTM coordinates.
-
-        Args:
-            _: Optional timestamp parameter (unused but required by LocationEstimator)
-
+        
         Returns:
-            Tuple of (easting, northing, altitude) in UTM coordinates
+            tuple[float, float, float]: Current location as (easting, northing, altitude)
         """
-        gps_data, _ = self._gps_module.get_gps_data()
+        gps_data = self._state_manager.get_gps_data()
         if gps_data.easting is None or gps_data.northing is None or gps_data.altitude is None:
             msg = "GPS data not available for location estimation"
             raise ValueError(msg)
-        return (
-            gps_data.easting,
-            gps_data.northing,
-            gps_data.altitude,
-        )
+        return gps_data.easting, gps_data.northing, gps_data.altitude
 
     def get_final_estimations(self) -> list[tuple[float, float, float, float]]:
         """Return final estimations for all frequencies."""
