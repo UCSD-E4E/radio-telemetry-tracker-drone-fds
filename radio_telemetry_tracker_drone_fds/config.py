@@ -18,6 +18,7 @@ class HardwareConfig:
     """Configuration for hardware components."""
 
     GPS_INTERFACE: str
+    EPSG_CODE: int
     GPS_I2C_BUS: int | None = None
     GPS_ADDRESS: int | None = None
     GPS_SERIAL_PORT: str | None = None
@@ -74,6 +75,7 @@ class HardwareConfig:
             GPS_INTERFACE="I2C",
             GPS_I2C_BUS=data["GPS_I2C_BUS"],
             GPS_ADDRESS=gps_address,
+            EPSG_CODE=data["EPSG_CODE"],
         )
 
     @classmethod
@@ -93,6 +95,7 @@ class HardwareConfig:
             GPS_INTERFACE="SERIAL",
             GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"],
             GPS_SERIAL_BAUDRATE=data["GPS_SERIAL_BAUDRATE"],
+            EPSG_CODE=data["EPSG_CODE"],
         )
 
     @classmethod
@@ -102,7 +105,11 @@ class HardwareConfig:
         if not isinstance(simulated_speed, (int, float)):
             msg = "GPS_SIMULATION_SPEED must be a number"
             raise TypeError(msg)
-        return cls(GPS_INTERFACE="SIMULATED", GPS_SIMULATION_SPEED=simulated_speed)
+        return cls(
+            GPS_INTERFACE="SIMULATED",
+            GPS_SIMULATION_SPEED=simulated_speed,
+            EPSG_CODE=data["EPSG_CODE"],
+        )
 
     @staticmethod
     def _validate_required_fields(data: dict[str, Any], required_fields: list[str], interface_type: str) -> None:

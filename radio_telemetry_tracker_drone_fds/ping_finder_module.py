@@ -65,9 +65,11 @@ class PingFinderModule:
                     "Timestamp",
                     "Frequency",
                     "Amplitude",
-                    "Latitude",
-                    "Longitude",
+                    "Easting",
+                    "Northing",
                     "Altitude",
+                    "Heading",
+                    "EPSG Code",
                 ],
             )
 
@@ -78,15 +80,16 @@ class PingFinderModule:
                     "Run",
                     "Timestamp",
                     "Frequency",
-                    "Latitude",
-                    "Longitude",
+                    "Easting",
+                    "Northing",
                     "Altitude",
+                    "EPSG Code",
                 ],
             )
 
     def _log_ping_to_csv(
         self,
-        data: tuple[dt.datetime, float, int, float, float, float],
+        data: tuple[dt.datetime, float, int, float, float, float, float, int],
     ) -> None:
         with self._csv_ping_filename.open("a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
@@ -94,7 +97,7 @@ class PingFinderModule:
 
     def _log_estimation_to_csv(
         self,
-        data: tuple[dt.datetime, float, float, float, float],
+        data: tuple[dt.datetime, float, float, float, float, int],
     ) -> None:
         with self._csv_estimation_filename.open("a", newline="") as csv_file:
             csv_writer = csv.writer(csv_file)
@@ -112,6 +115,8 @@ class PingFinderModule:
                 gps_data.latitude if gps_data.latitude is not None else "N/A",
                 gps_data.longitude if gps_data.longitude is not None else "N/A",
                 gps_data.altitude if gps_data.altitude is not None else "N/A",
+                gps_data.heading if gps_data.heading is not None else "N/A",
+                gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
             ),
         )
 
@@ -126,26 +131,45 @@ class PingFinderModule:
         logging.info("-" * 60)
         logging.info("GPS Data:")
         logging.info(
-            f"  Latitude:  {gps_data.latitude:.6f}"
-            if gps_data.latitude is not None
-            else "  Latitude:  N/A",
+            f"  Easting:  {gps_data.easting:.2f}"
+            if gps_data.easting is not None
+            else "  Easting:  N/A",
         )
         logging.info(
-            f"  Longitude: {gps_data.longitude:.6f}"
-            if gps_data.longitude is not None
-            else "  Longitude: N/A",
+            f"  Northing:  {gps_data.northing:.2f}"
+            if gps_data.northing is not None
+            else "  Northing: N/A",
         )
         logging.info(
             f"  Altitude:  {gps_data.altitude:.2f}"
             if gps_data.altitude is not None
             else "  Altitude:  N/A",
         )
+        logging.info(
+            f"  Heading:  {gps_data.heading:.2f}"
+            if gps_data.heading is not None
+            else "  Heading:  N/A",
+        )
+        logging.info(
+            f"  EPSG Code:  {gps_data.epsg_code}"
+            if gps_data.epsg_code is not None
+            else "  EPSG Code:  N/A",
+        )
 
         if estimate is not None:
+            self._log_estimation_to_csv(
+                (
+                    now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    frequency,
+                    *estimate,
+                    gps_data.epsg_code,
+                ),
+            )
+
             logging.info("-" * 60)
             logging.info("Estimated Location:")
-            logging.info("  Longitude: %.6f", estimate[0])
-            logging.info("  Latitude:  %.6f", estimate[1])
+            logging.info("  Easting:  %.2f", estimate[0])
+            logging.info("  Northing:  %.2f", estimate[1])
             logging.info("  Altitude:  %.2f", estimate[2])
 
         logging.info("=" * 60)
@@ -189,18 +213,21 @@ class PingFinderModule:
         self,
         _: dt.datetime | None = None,
     ) -> tuple[float, float, float]:
-        """Get current GPS location.
+        """Get current GPS location in UTM coordinates.
 
         Args:
             _: Optional timestamp parameter (unused but required by LocationEstimator)
 
         Returns:
-            Tuple of (longitude, latitude, altitude)
+            Tuple of (easting, northing, altitude) in UTM coordinates
         """
         gps_data, _ = self._gps_module.get_gps_data()
+        if gps_data.easting is None or gps_data.northing is None or gps_data.altitude is None:
+            msg = "GPS data not available for location estimation"
+            raise ValueError(msg)
         return (
-            gps_data.longitude,
-            gps_data.latitude,
+            gps_data.easting,
+            gps_data.northing,
             gps_data.altitude,
         )
 

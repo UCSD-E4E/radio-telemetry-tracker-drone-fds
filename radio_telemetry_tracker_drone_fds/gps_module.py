@@ -10,6 +10,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import pynmea2
+import pyproj
 
 from radio_telemetry_tracker_drone_fds.drone_state import (
     GPSData,
@@ -241,7 +242,7 @@ class GPSModule:
     GPS_DATA_TIMEOUT = 5  # seconds
     GPS_RETRY_INTERVAL = 1  # seconds
 
-    def __init__(self, gps_interface: GPSInterface) -> None:
+    def __init__(self, gps_interface: GPSInterface, epsg_code: int) -> None:
         """Initialize the GPS module with a GPS interface."""
         logging.basicConfig(level=logging.INFO)
         self._logger = logging.getLogger(__name__)
@@ -252,6 +253,8 @@ class GPSModule:
         self._last_update_time = 0
         self._error_count = 0
         self._max_errors = 5
+        self._epsg_code = epsg_code
+        self._transformer = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self._epsg_code}", always_xy=True)
         self._update_gps_state(GPSState.INITIALIZING)
         update_gps_data(GPSData())
 
@@ -313,8 +316,18 @@ class GPSModule:
                 continue
         return data_updated, new_gps_data if data_updated else None
 
+    def _latlon_to_utm(self, latitude: float, longitude: float) -> tuple[float, float]:
+        easting, northing = self._transformer.transform(longitude, latitude)
+        return easting, northing
+
     def _update_gps_data(self, new_gps_data: GPSData) -> None:
         """Update the current GPS data and state."""
+        if new_gps_data.latitude and new_gps_data.longitude is not None:
+            easting, northing = self._latlon_to_utm(new_gps_data.latitude, new_gps_data.longitude)
+            new_gps_data.easting = easting
+            new_gps_data.northing = northing
+            new_gps_data.epsg_code = self._epsg_code
+
         update_gps_data(new_gps_data)
         self._last_update_time = time.time()
 

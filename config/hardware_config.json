@@ -1,5 +1,6 @@
 {
   "GPS_INTERFACE": "SIMULATED",
+  "EPSG_CODE": 32611,
   "GPS_I2C_BUS": 1,
   "GPS_ADDRESS": "0x42",
   "GPS_SERIAL_PORT": "/dev/ttyS0",

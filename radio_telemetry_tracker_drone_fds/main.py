@@ -76,10 +76,12 @@ def print_heartbeat(
         )
         logger.info("PingFinder State: %s", state_str)
         logger.info(
-            "GPS Data: Lat: %s, Lon: %s, Alt: %s",
-            gps_data.latitude,
-            gps_data.longitude,
-            gps_data.altitude,
+            "GPS Data: Easting: %s, Northing: %s, Altitude: %s, Heading: %s, EPSG Code: %s",
+            f"{gps_data.easting:.3f}" if gps_data.easting is not None else "N/A",
+            f"{gps_data.northing:.3f}" if gps_data.northing is not None else "N/A",
+            gps_data.altitude if gps_data.altitude is not None else "N/A",
+            gps_data.heading if gps_data.heading is not None else "N/A",
+            gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
         )
         logger.info("-" * 40)
 
@@ -216,7 +218,7 @@ def run() -> None:
 
     # Initialize GPS module
     logger.info("Initializing GPS module")
-    gps_module = GPSModule(gps_interface)
+    gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE)
 
     logger.info("Starting GPS thread")
     gps_thread = threading.Thread(target=gps_module.run, daemon=True)

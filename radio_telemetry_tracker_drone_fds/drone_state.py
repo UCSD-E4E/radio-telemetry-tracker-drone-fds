@@ -35,7 +35,9 @@ class GPSData:
     longitude: float | None = None
     altitude: float | None = None
     heading: float | None = None
-
+    easting: float | None = None
+    northing: float | None = None
+    epsg_code: int | None = None
 
 @dataclass
 class DroneState:
