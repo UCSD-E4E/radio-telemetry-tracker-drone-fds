@@ -17,18 +17,14 @@ if TYPE_CHECKING:
     from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
     from radio_telemetry_tracker_drone_fds.state_manager import StateManager
 
+logger = logging.getLogger(__name__)
+
 
 class PingFinderModule:
     """Handles ping finding operations using SDR."""
 
     def __init__(self, gps_module: GPSModule, config: PingFinderConfig, state_manager: StateManager) -> None:
-        """Initialize PingFinderModule with configured PingFinder, GPSModule, and StateManager.
-
-        Args:
-            gps_module (GPSModule): The GPS module instance.
-            config (PingFinderConfig): Configuration for PingFinder.
-            state_manager (StateManager): Centralized state manager.
-        """
+        """Initialize PingFinderModule with configured PingFinder, GPSModule, and StateManager."""
         self._gps_module = gps_module
         self._ping_finder = PingFinder()
         self._state_manager = state_manager
@@ -85,21 +81,27 @@ class PingFinderModule:
                 ],
             )
 
-    def _log_ping_to_csv(self, data: tuple[dt.datetime, float, int, float, float, float, float, int]) -> None:
+    def _log_ping_to_csv(self, data: tuple) -> None:
         """Log ping data to CSV."""
-        with self._csv_ping_filename.open("a", newline="") as csv_file:
-            csv_writer = csv.writer(csv_file)
-            csv_writer.writerow([self._run_num, *list(data)])
+        try:
+            with self._csv_ping_filename.open("a", newline="") as csv_file:
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow([self._run_num, *list(data)])
+        except Exception:
+            logger.exception("Failed to write ping data to CSV.")
 
-    def _log_estimation_to_csv(self, data: tuple[dt.datetime, float, float, float, float, int]) -> None:
+    def _log_estimation_to_csv(self, data: tuple) -> None:
         """Log location estimation to CSV."""
-        with self._csv_estimation_filename.open("a", newline="") as csv_file:
-            csv_writer = csv.writer(csv_file)
-            csv_writer.writerow([self._run_num, *list(data)])
+        try:
+            with self._csv_estimation_filename.open("a", newline="") as csv_file:
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow([self._run_num, *list(data)])
+        except Exception:
+            logger.exception("Failed to write estimation data to CSV.")
 
     def _callback(self, now: dt.datetime, amplitude: float, frequency: int) -> None:
         """Callback invoked by PingFinder when a ping is detected."""
-        logging.debug("PingFinderModule._callback called")
+        logger.debug("PingFinderModule._callback called")
         gps_data = self._state_manager.get_gps_data()
 
         # Log ping data to CSV
@@ -121,17 +123,17 @@ class PingFinderModule:
         estimate = self._location_estimator.do_estimate(frequency)
 
         # Log GPS and estimation data
-        logging.info("=" * 60)
-        logging.info("Timestamp: %s", now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
-        logging.info("Frequency: %d Hz", frequency)
-        logging.info("Amplitude: %.2f", amplitude)
-        logging.info("-" * 60)
-        logging.info("GPS Data:")
-        logging.info(f"  Easting:  {gps_data.easting:.2f}" if gps_data.easting else "  Easting:  N/A")
-        logging.info(f"  Northing: {gps_data.northing:.2f}" if gps_data.northing else "  Northing: N/A")
-        logging.info(f"  Altitude: {gps_data.altitude:.2f}" if gps_data.altitude else "  Altitude:  N/A")
-        logging.info(f"  Heading:  {gps_data.heading:.2f}" if gps_data.heading else "  Heading:  N/A")
-        logging.info(f"  EPSG Code: {gps_data.epsg_code}" if gps_data.epsg_code else "  EPSG Code:  N/A")
+        logger.info("=" * 60)
+        logger.info("Timestamp: %s", now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+        logger.info("Frequency: %d Hz", frequency)
+        logger.info("Amplitude: %.2f", amplitude)
+        logger.info("-" * 60)
+        logger.info("GPS Data:")
+        logger.info(f"  Easting:  {gps_data.easting:.2f}" if gps_data.easting else "  Easting:  N/A")
+        logger.info(f"  Northing: {gps_data.northing:.2f}" if gps_data.northing else "  Northing: N/A")
+        logger.info(f"  Altitude: {gps_data.altitude:.2f}" if gps_data.altitude else "  Altitude:  N/A")
+        logger.info(f"  Heading:  {gps_data.heading:.2f}" if gps_data.heading else "  Heading:  N/A")
+        logger.info(f"  EPSG Code: {gps_data.epsg_code}" if gps_data.epsg_code else "  EPSG Code:  N/A")
 
         if estimate is not None:
             self._log_estimation_to_csv(
@@ -143,11 +145,11 @@ class PingFinderModule:
                     gps_data.epsg_code,
                 ),
             )
-            logging.info("-" * 60)
-            logging.info("Estimated Location:")
-            logging.info("  Easting:  %.2f", estimate[0])
-            logging.info("  Northing: %.2f", estimate[1])
-            logging.info("=" * 60)
+            logger.info("-" * 60)
+            logger.info("Estimated Location:")
+            logger.info("  Easting:  %.2f", estimate[0])
+            logger.info("  Northing: %.2f", estimate[1])
+            logger.info("=" * 60)
 
     def start(self) -> None:
         """Start the ping finding operation in a separate thread."""
@@ -173,21 +175,18 @@ class PingFinderModule:
             while not self._stop_event.is_set():
                 self._stop_event.wait(0.1)
         except (OSError, RuntimeError):
-            logging.exception("PingFinder error")
+            logger.exception("PingFinder error")
             self._state_manager.update_ping_finder_state("error")
         finally:
             if self._state_manager.get_ping_finder_state() != "Error":
                 self._state_manager.update_ping_finder_state("stop")
 
     def _get_current_location(self, _: dt.datetime | None = None) -> tuple[float, float, float]:
-        """Get current GPS location in UTM coordinates.
-        
-        Returns:
-            tuple[float, float, float]: Current location as (easting, northing, altitude)
-        """
+        """Get current GPS location in UTM coordinates."""
         gps_data = self._state_manager.get_gps_data()
         if gps_data.easting is None or gps_data.northing is None or gps_data.altitude is None:
             msg = "GPS data not available for location estimation"
+            logger.error(msg)
             raise ValueError(msg)
         return gps_data.easting, gps_data.northing, gps_data.altitude
 

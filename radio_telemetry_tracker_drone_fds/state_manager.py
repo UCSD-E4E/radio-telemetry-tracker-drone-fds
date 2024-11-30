@@ -9,6 +9,7 @@ from threading import Lock
 
 from transitions import Machine
 
+logger = logging.getLogger(__name__)
 
 # GPS State Definitions
 class GPSState(Enum):
@@ -28,7 +29,11 @@ class GPSStateMachine:
 
         # Define transitions
         self.machine.add_transition("initialize", "*", GPSState.INITIALIZING.value)
-        self.machine.add_transition("start_acquisition", GPSState.INITIALIZING.value, GPSState.ACQUIRING.value)
+        self.machine.add_transition(
+            "start_acquisition",
+            [GPSState.INITIALIZING.value, GPSState.ERROR.value],
+            GPSState.ACQUIRING.value,
+        )
         self.machine.add_transition("lock_signal", GPSState.ACQUIRING.value, GPSState.LOCKED.value)
         self.machine.add_transition("error", "*", GPSState.ERROR.value)
         self.machine.add_transition("reset", GPSState.ERROR.value, GPSState.INITIALIZING.value)
@@ -91,9 +96,9 @@ class StateManager:
                 getattr(self.gps_state_machine, trigger)()
                 new_state = self.gps_state_machine.state
                 if old_state != new_state:
-                    logging.info("[GPS] State changed from %s to %s", old_state, new_state)
+                    logger.info("[GPS] State changed from %s to %s", old_state, new_state)
             except Exception:
-                logging.exception("[GPS] Failed to trigger '%s'", trigger)
+                logger.exception("[GPS] Failed to trigger '%s'", trigger)
 
     def update_gps_data(self, data: GPSData) -> None:
         """Update the current GPS data."""
@@ -119,9 +124,9 @@ class StateManager:
                 getattr(self.ping_finder_state_machine, trigger)()
                 new_state = self.ping_finder_state_machine.state
                 if old_state != new_state:
-                    logging.info("[PingFinder] State changed from %s to %s", old_state, new_state)
+                    logger.info("[PingFinder] State changed from %s to %s", old_state, new_state)
             except Exception:
-                logging.exception("[PingFinder] Failed to trigger '%s'", trigger)
+                logger.exception("[PingFinder] Failed to trigger '%s'", trigger)
 
     def get_ping_finder_state(self) -> str:
         """Retrieve the current PingFinder state."""

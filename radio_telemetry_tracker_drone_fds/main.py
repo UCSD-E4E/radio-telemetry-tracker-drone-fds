@@ -10,6 +10,7 @@ from pathlib import Path
 
 from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
 from radio_telemetry_tracker_drone_fds.gps_module import (
+    GPSInterface,
     GPSModule,
     I2CGPSInterface,
     SerialGPSInterface,
@@ -37,16 +38,7 @@ def setup_logging() -> None:
 
 
 def wait_for_gps_ready(state_manager: StateManager, timeout: int = 300) -> bool:
-    """Wait for GPS module to be ready within the specified timeout.
-
-    Args:
-        gps_module (GPSModule): The GPS module to check.
-        state_manager (StateManager): The centralized state manager.
-        timeout (int, optional): Maximum wait time in seconds. Defaults to 300.
-
-    Returns:
-        bool: True if GPS is ready, False if timeout occurred.
-    """
+    """Wait for GPS module to be ready within the specified timeout."""
     start_time = time.time()
     while time.time() - start_time < timeout:
         if state_manager.get_gps_state() == "Locked":
@@ -88,13 +80,7 @@ class PingFinderManager:
     """Handles PingFinder configuration and operation."""
 
     def __init__(self, config_path: Path, gps_module: GPSModule, state_manager: StateManager) -> None:
-        """Initialize the manager.
-
-        Args:
-            config_path (Path): The path to the ping_finder_config.json file.
-            gps_module (GPSModule): The GPS module instance.
-            state_manager (StateManager): Centralized state manager.
-        """
+        """Initialize the manager."""
         self.config_path = config_path
         self.gps_module = gps_module
         self.state_manager = state_manager
@@ -130,20 +116,17 @@ class PingFinderManager:
         return PingFinderConfig.load_from_file(self.config_path)
 
     def _setup_logging_file(self, output_dir: str | None) -> None:
-        """Set up or update the file handler for logging based on output_dir.
-
-        Args:
-            output_dir (str | None): The directory where logs should be saved.
-        """
-        root_logger = logging.getLogger()  # Get the root logger first
+        """Set up or update the file handler for logging based on output_dir."""
+        root_logger = logging.getLogger()
 
         if output_dir is None:
             root_logger.warning("output_dir is not specified in the configuration.")
             return
 
         # Ensure the output directory exists
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        log_file_path = Path(output_dir) / "radio_telemetry_tracker_drone_fds.log"
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        log_file_path = output_path / "radio_telemetry_tracker_drone_fds.log"
 
         # Remove the old file handler if it exists
         if self.file_handler:
@@ -182,42 +165,27 @@ def load_hardware_config() -> HardwareConfig:
     return HardwareConfig.load_from_file(config_path)
 
 
-def run() -> None:
-    """Initialize and run the main components of Radio Telemetry Tracker Drone FDS.
-
-    Raises:
-        SystemExit: If GPS is not ready or configuration is invalid
-    """
-    setup_logging()
-    logger.info("Starting run function")
-
-    # Load hardware configuration
-    try:
-        hardware_config = load_hardware_config()
-    except Exception:
-        logger.exception("Failed to load hardware configuration")
-        sys.exit(1)
-
-    # Initialize GPS interface
+def initialize_gps_interface(hardware_config: HardwareConfig) -> GPSInterface:
+    """Initialize and return appropriate GPS interface based on configuration."""
     gps_interface_type = hardware_config.GPS_INTERFACE.upper()
     if gps_interface_type == "I2C":
-        gps_interface = I2CGPSInterface(
+        return I2CGPSInterface(
             hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS,
         )
-    elif gps_interface_type == "SERIAL":
-        gps_interface = SerialGPSInterface(
+    if gps_interface_type == "SERIAL":
+        return SerialGPSInterface(
             hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE,
         )
-    elif gps_interface_type == "SIMULATED":
-        gps_interface = SimulatedGPSInterface(hardware_config.GPS_SIMULATION_SPEED)
-    else:
-        logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
-        sys.exit(1)
+    if gps_interface_type == "SIMULATED":
+        return SimulatedGPSInterface(hardware_config.GPS_SIMULATION_SPEED)
 
-    # Initialize StateManager
-    state_manager = StateManager()
+    logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
+    sys.exit(1)
 
-    # Initialize GPS module
+
+def initialize_gps_module(hardware_config: HardwareConfig, state_manager: StateManager) -> GPSModule:
+    """Initialize and start GPS module."""
+    gps_interface = initialize_gps_interface(hardware_config)
     logger.info("Initializing GPS module")
     gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE, state_manager)
 
@@ -230,13 +198,16 @@ def run() -> None:
         logger.error("GPS not ready. Exiting the program.")
         sys.exit(1)
 
-    # Find PingFinder configuration
+    return gps_module
+
+
+def initialize_ping_finder(state_manager: StateManager, gps_module: GPSModule) -> PingFinderManager:
+    """Initialize and start PingFinder."""
     initial_config_path = find_ping_finder_config()
     if not initial_config_path:
-        logger.error("No ping_finder_config.json found on any USB device")
+        logger.error("No ping_finder_config.json found")
         sys.exit(1)
 
-    # Initialize and start PingFinder
     manager = PingFinderManager(initial_config_path, gps_module, state_manager)
     try:
         manager.start()
@@ -244,7 +215,27 @@ def run() -> None:
         logger.exception("Failed to start PingFinder")
         sys.exit(1)
 
+    return manager
+
+
+def run() -> None:
+    """Initialize and run the main components of Radio Telemetry Tracker Drone FDS."""
+    setup_logging()
+    logger.info("Starting run function")
+
     try:
+        # Load hardware configuration
+        hardware_config = load_hardware_config()
+
+        # Initialize StateManager
+        state_manager = StateManager()
+
+        # Initialize GPS module
+        gps_module = initialize_gps_module(hardware_config, state_manager)
+
+        # Initialize and start PingFinder
+        manager = initialize_ping_finder(state_manager, gps_module)
+
         # Start the heartbeat in a separate thread
         heartbeat_thread = threading.Thread(
             target=print_heartbeat,
@@ -253,13 +244,19 @@ def run() -> None:
         )
         heartbeat_thread.start()
 
+        # Main loop
         while True:
             time.sleep(1)
+
     except KeyboardInterrupt:
         logger.info("Received KeyboardInterrupt. Shutting down.")
+    except Exception:
+        logger.exception("An unexpected error occurred.")
     finally:
-        manager.stop()
-        gps_module.stop()
+        if "manager" in locals():
+            manager.stop()
+        if "gps_module" in locals():
+            gps_module.stop()
 
 
 def main() -> None:
