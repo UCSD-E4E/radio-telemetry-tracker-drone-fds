@@ -1,6 +1,6 @@
-# Radio Telemetry Tracker Drone FDS
+# Radio Telemetry Tracker Drone Field Device Software (FDS)
 
-The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed to track and record radio telemetry data from drone transmitters. It leverages various hardware components for efficient data collection and processing.
+The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to track and locate wildlife radio transmitters using a drone-mounted payload. It integrates GPS, software-defined radio (SDR), and signal processing to detect and record telemetry signals, aiding in wildlife monitoring and conservation efforts.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
@@ -10,7 +10,7 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [Hardware Configuration](#hardware-configuration)
-  - [PingFinder Configuration via USB](#pingfinder-configuration-via-usb)
+  - [USB Configuration](#usb-configuration)
 - [Usage](#usage)
 - [Automatic Startup](#automatic-startup)
 - [Troubleshooting](#troubleshooting)
@@ -21,24 +21,32 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based application designed
 ### Hardware Requirements
 
 #### Required Components
-- **Single Board Computer:** UP 7000 Series (tested with UP 7000)
-- **Software Defined Radio:** USRP B200mini-i (connected via USB)
-- **GPS Module:** Sparkfun NEO-M9N (connected via I2C bus 1)
+- **Single Board Computer:** Intel-based SBC (tested with UP 7000)
+- **Software Defined Radio (SDR):** Supported SDR types:
+  - **USRP** (e.g., USRP B200mini-i)
+  - **HackRF** (e.g., HackRF One)
+  - **AirSpy** (e.g., AirSpy R2)
+- **GPS Module:** Supported GPS modules:
+  - **I2C GPS Module:** e.g., Sparkfun NEO-M9N (connected via I2C bus)
+  - **Serial GPS Module:** (connected via serial port)
+  - **Simulated GPS:** (for testing)
 - **Storage:** USB Flash Drive (FAT32 formatted)
 
 #### Connection Details
 - **SDR Connection:** USB 3.0 port
-- **GPS Connection:** I2C Bus 1
-  - SDA: Pin XX
-  - SCL: Pin XX
-  - VCC: 3.3V
-  - GND: Ground
+- **GPS Connection:**
+  - **I2C GPS Module:** I2C Bus 1
+    - SDA: Pin XX
+    - SCL: Pin XX
+    - VCC: 3.3V
+    - GND: Ground
+  - **Serial GPS Module:** Serial port (e.g., /dev/ttyUSB0)
 - **USB Storage:** Any available USB port
 
 ### System Requirements
-- **Operating System:** Ubuntu 24.04 or later (24.04.1 tested)
-- **Python:** 3.12 or later (3.12.7 tested)
-- **Poetry:** 1.8 or later (1.8.4 tested)
+- **Operating System:** Ubuntu 24.04 or later
+- **Python:** 3.12 or later
+- **Poetry:** 1.8 or later
 
 ### System Dependencies
 ```bash
@@ -60,6 +68,8 @@ sudo uhd_images_downloader
 ## Installation
 
 ### 1. Hardware Setup
+#### GPS Permissions (if using I2C GPS)
+
 ```bash
 # Add user to i2c group for GPS access
 sudo groupadd -f i2c
@@ -91,10 +101,28 @@ poetry install
 Create or modify `./config/hardware_config.json`:
 ```json
 {
-    "GPS_I2C_BUS": 1,
-    "GPS_ADDRESS": "0x42"
+  "GPS_INTERFACE": "SIMULATED",
+  "EPSG_CODE": 32611,
+  "GPS_I2C_BUS": 1,
+  "GPS_ADDRESS": "0x42",
+  "GPS_SERIAL_PORT": "/dev/ttyS0",
+  "GPS_SERIAL_BAUDRATE": 9600,
+  "GPS_SIMULATION_SPEED": 1.0,
+  "CHECK_USB_FOR_CONFIG": true,
+  "SDR_TYPE": "USRP"
 }
 ```
+
+#### Explanation of Parameters:
+- **GPS_INTERFACE:** "SIMULATED", "I2C", or "SERIAL". Selects the GPS interface type.
+- **EPSG_CODE:** EPSG code for the UTM zone (e.g., `32611` for UTM zone 11N).
+- **GPS_I2C_BUS:** (For I2C interface) I2C bus number (e.g., `1`).
+- **GPS_ADDRESS:** (For I2C interface) I2C address of the GPS module (e.g., `"0x42"`).
+- **GPS_SERIAL_PORT:** (For Serial interface) Serial port for the GPS module (e.g., `"/dev/ttyS0"`).
+- **GPS_SERIAL_BAUDRATE:** (For Serial interface) Serial baud rate for the GPS module (e.g., `9600`).
+- **GPS_SIMULATION_SPEED:** (For Simulated interface) Speed multiplier for simulated GPS data (e.g., `1.0`).
+- **CHECK_USB_FOR_CONFIG:** `true` or `false`. Whether to check USB storage for configuration.
+- **SDR_TYPE:** `"USRP"`, `"HACKRF"`, or `"AIRSPY"`. Selects the SDR type.
 
 ### USB Configuration
 1. **Create Automount Service:**
@@ -138,6 +166,7 @@ sudo systemctl start usb-automount
     "target_frequencies": [173043000]
 }
 ```
+**Note:** The application will check for `ping_finder_config.json` on the USB drive if `CHECK_USB_FOR_CONFIG` is `true` in `hardware_config.json`. If `false`, the application will check for `./config/ping_finder_config.json`.
 
 ## Usage
 
@@ -148,8 +177,15 @@ sudo systemctl start usb-automount
 
 2. **Development with Poetry Shell:**
     ```bash
+    # Enter poetry shell
     poetry shell
-    python -m radio_telemetry_tracker_drone_fds.main
+    # Install dependencies + dev tools
+    poetry install --with dev
+    # Run application
+    radio_telemetry_tracker_drone_fds
+    # Run tests
+    pytest
+    # Exit poetry shell
     exit
     ```
 
