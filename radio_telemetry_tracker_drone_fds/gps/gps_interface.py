@@ -6,6 +6,7 @@ import datetime as dt
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from typing import TYPE_CHECKING
 
 import pynmea2
@@ -78,7 +79,7 @@ class SimulatedGPSInterface(GPSInterface):
         """Generate simulated GPS data."""
         lat = 32.7157  # Starting latitude (e.g., San Diego, CA)
         lon = -117.1611  # Starting longitude
-        altitude = 20  # Starting altitude
+        altitude = 20
 
         def generate_sentences() -> str:
             elapsed_time = (time.time() - self._start_time) * self._simulation_speed
@@ -101,7 +102,9 @@ class SimulatedGPSInterface(GPSInterface):
 
             # Create NMEA sentences using pynmea2
             gga_msg = pynmea2.GGA(
-                "GP", "GGA", (
+                "GP",
+                "GGA",
+                (
                     time_str,
                     self._format_nmea_lat_lon(current_lat, "lat"), self._lat_dir(current_lat),
                     self._format_nmea_lat_lon(current_lon, "lon"), self._lon_dir(current_lon),
@@ -117,7 +120,9 @@ class SimulatedGPSInterface(GPSInterface):
             gga_sentence = gga_msg.render()
 
             rmc_msg = pynmea2.RMC(
-                "GP", "RMC", (
+                "GP",
+                "RMC",
+                (
                     time_str,
                     "A",  # Status
                     self._format_nmea_lat_lon(current_lat, "lat"), self._lat_dir(current_lat),

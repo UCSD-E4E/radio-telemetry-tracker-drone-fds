@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import bisect
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from enum import Enum
 from threading import Lock
 
 from transitions import Machine
 
 logger = logging.getLogger(__name__)
+
+MAX_HISTORY = 1000
 
 # GPS State Definitions
 class GPSState(Enum):
@@ -36,8 +40,7 @@ class GPSStateMachine:
         )
         self.machine.add_transition("lock_signal", GPSState.ACQUIRING.value, GPSState.LOCKED.value)
         self.machine.add_transition("error", "*", GPSState.ERROR.value)
-        self.machine.add_transition("reset", GPSState.ERROR.value, GPSState.INITIALIZING.value)
-
+        self.machine.add_transition("reset", [GPSState.ERROR.value, GPSState.LOCKED.value], GPSState.INITIALIZING.value)
 
 # PingFinder State Definitions
 class PingFinderState(Enum):
@@ -62,11 +65,11 @@ class PingFinderStateMachine:
         self.machine.add_transition("error", "*", PingFinderState.ERROR.value)
         self.machine.add_transition("reset", PingFinderState.ERROR.value, PingFinderState.IDLE.value)
 
-
 # GPS Data
 @dataclass
 class GPSData:
-    """Represents GPS coordinate data."""
+    """Represents GPS coordinate data with a timestamp."""
+    timestamp: float = field(default_factory=time.time)
     latitude: float | None = None
     longitude: float | None = None
     altitude: float | None = None
@@ -75,21 +78,20 @@ class GPSData:
     northing: float | None = None
     epsg_code: int | None = None
 
-
 # Centralized StateManager
 class StateManager:
-    """Centralized state manager for the drone."""
+    """Centralized State Manager with GPS and PingFinder states and data."""
 
     def __init__(self) -> None:
         """Initialize the state manager with GPS and PingFinder state machines."""
         self._lock = Lock()
         self.gps_state_machine = GPSStateMachine()
         self.ping_finder_state_machine = PingFinderStateMachine()
-        self._gps_data = GPSData()
+        self._gps_data_history: list[tuple[float, GPSData]] = []  # List of (timestamp, GPSData)
+        self._current_gps_data: GPSData = GPSData()
 
-    # GPS State Methods
     def update_gps_state(self, trigger: str) -> None:
-        """Update the GPS state using a trigger."""
+        """Trigger a state transition for the GPS state machine."""
         with self._lock:
             old_state = self.gps_state_machine.state
             try:
@@ -101,19 +103,43 @@ class StateManager:
                 logger.exception("[GPS] Failed to trigger '%s'", trigger)
 
     def update_gps_data(self, data: GPSData) -> None:
-        """Update the current GPS data."""
+        """Update the current GPS data and maintain history."""
         with self._lock:
-            self._gps_data = data
+            bisect.insort(self._gps_data_history, (data.timestamp, data))
+            self._current_gps_data = data
+            if len(self._gps_data_history) > MAX_HISTORY:
+                self._gps_data_history.pop(0)  # Remove the oldest entry
 
     def get_gps_state(self) -> str:
         """Retrieve the current GPS state."""
         with self._lock:
             return self.gps_state_machine.state
 
-    def get_gps_data(self) -> GPSData:
+    def get_gps_data_closest_to(self, timestamp: float) -> GPSData | None:
+        """Retrieve the GPS data closest to the given timestamp."""
+        with self._lock:
+            if not self._gps_data_history:
+                return None
+
+            timestamps = [entry[0] for entry in self._gps_data_history]
+            index = bisect.bisect_left(timestamps, timestamp)
+
+            if index == 0:
+                return self._gps_data_history[0][1]
+            if index == len(self._gps_data_history):
+                return self._gps_data_history[-1][1]
+
+            before = self._gps_data_history[index - 1]
+            after = self._gps_data_history[index]
+
+            if abs(before[0] - timestamp) <= abs(after[0] - timestamp):
+                return before[1]
+            return after[1]
+
+    def get_current_gps_data(self) -> GPSData:
         """Retrieve the current GPS data."""
         with self._lock:
-            return self._gps_data
+            return self._current_gps_data
 
     # PingFinder State Methods
     def update_ping_finder_state(self, trigger: str) -> None:

@@ -1,5 +1,4 @@
-"""Main module for the Radio Telemetry Tracker Drone FDS."""
-
+"""Main entry point for the Radio Telemetry Tracker Drone FDS application."""
 from __future__ import annotations
 
 import logging
@@ -17,7 +16,8 @@ from radio_telemetry_tracker_drone_fds.gps.gps_interface import (
     SimulatedGPSInterface,
 )
 from radio_telemetry_tracker_drone_fds.ping_finder import PingFinderModule
-from radio_telemetry_tracker_drone_fds.state import StateManager
+from radio_telemetry_tracker_drone_fds.state.state_manager import StateManager
+from radio_telemetry_tracker_drone_fds.utils.logging_helper import log_heartbeat
 from radio_telemetry_tracker_drone_fds.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -63,9 +63,8 @@ def find_ping_finder_config() -> Path | None:
 
 
 def main() -> None:
-    """Entry point for the Radio Telemetry Tracker Drone FDS application."""
+    """Main function to initialize and start modules."""
     setup_logging()
-    logger.info("Starting application")
 
     try:
         # Load hardware configuration
@@ -76,28 +75,38 @@ def main() -> None:
 
         # Initialize GPS module
         gps_interface = initialize_gps_interface(hardware_config)
+
+        # Initialize GPS module
         gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE, state_manager)
 
-        # Start GPS thread
+        # Start GPS module in a separate thread
         gps_thread = threading.Thread(target=gps_module.run, daemon=True)
         gps_thread.start()
 
         # Wait for GPS to be ready
         if not wait_for_gps_ready(state_manager):
-            logger.error("GPS not ready. Exiting the program.")
+            logger.error("GPS failed to initialize within the timeout period.")
             sys.exit(1)
 
-        # Find PingFinder configuration on USB stick
-        ping_finder_config_path = find_ping_finder_config()
-        if not ping_finder_config_path:
-            logger.error("PingFinder configuration not found on USB stick.")
-            sys.exit(1)
+        # Find PingFinder configuration based on CHECK_USB_FOR_CONFIG
+        if hardware_config.CHECK_USB_FOR_CONFIG:
+            ping_finder_config_path = find_ping_finder_config()
+            if not ping_finder_config_path:
+                logger.error("PingFinder configuration not found on USB stick.")
+                sys.exit(1)
+        else:
+            ping_finder_config_path = Path("./config/ping_finder_config.json")
+            if not ping_finder_config_path.exists():
+                logger.error("PingFinder configuration not found at ./config/ping_finder_config.json.")
+                sys.exit(1)
 
         # Load PingFinder configuration
         ping_finder_config = PingFinderConfig.load_from_file(ping_finder_config_path)
 
         # Initialize and start PingFinder module
-        ping_finder_module = PingFinderModule(gps_module, ping_finder_config, state_manager)
+        ping_finder_module = PingFinderModule(
+            gps_module, ping_finder_config, state_manager, hardware_config.SDR_TYPE,
+        )
         ping_finder_module.start()
 
         # Start heartbeat thread
@@ -141,23 +150,14 @@ def print_heartbeat(
 ) -> None:
     """Continuously print GPS and PingFinder status information."""
     while True:
-        gps_data = state_manager.get_gps_data()
+        gps_data = state_manager.get_current_gps_data()
         gps_state = state_manager.get_gps_state()
         ping_finder_state = (
             state_manager.get_ping_finder_state() if ping_finder_module else "Not Available"
         )
 
-        logger.info("GPS State: %s", gps_state)
-        logger.info("PingFinder State: %s", ping_finder_state)
-        logger.info(
-            "GPS Data: Easting: %s, Northing: %s, Altitude: %s, Heading: %s, EPSG Code: %s",
-            f"{gps_data.easting:.3f}" if gps_data.easting is not None else "N/A",
-            f"{gps_data.northing:.3f}" if gps_data.northing is not None else "N/A",
-            gps_data.altitude if gps_data.altitude is not None else "N/A",
-            gps_data.heading if gps_data.heading is not None else "N/A",
-            gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
-        )
-        logger.info("-" * 40)
+        # Use logging helper to log heartbeat
+        log_heartbeat(gps_state, ping_finder_state, gps_data)
 
         time.sleep(5)
 

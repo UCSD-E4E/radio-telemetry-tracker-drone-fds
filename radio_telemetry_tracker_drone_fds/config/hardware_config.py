@@ -23,6 +23,8 @@ class HardwareConfig:
 
     GPS_INTERFACE: str
     EPSG_CODE: int
+    CHECK_USB_FOR_CONFIG: bool
+    SDR_TYPE: str
     GPS_I2C_BUS: int | None = None
     GPS_ADDRESS: int | None = None
     GPS_SERIAL_PORT: str | None = None
@@ -51,18 +53,35 @@ class HardwareConfig:
         try:
             gps_interface = data["GPS_INTERFACE"].upper()
             if gps_interface == "I2C":
-                return cls._create_i2c_config(data)
-            if gps_interface == "SERIAL":
-                return cls._create_serial_config(data)
-            if gps_interface == "SIMULATED":
-                return cls._create_simulation_config(data)
-            msg = f"Unsupported GPS interface: {gps_interface}"
-            logger.error(msg)
-            raise ValueError(msg)
+                config = cls._create_i2c_config(data)
+            elif gps_interface == "SERIAL":
+                config = cls._create_serial_config(data)
+            elif gps_interface == "SIMULATED":
+                config = cls._create_simulation_config(data)
+            else:
+                msg = f"Unsupported GPS interface: {gps_interface}"
+                raise ValueError(msg)
+
+            # Ensure CHECK_USB_FOR_CONFIG and SDR_TYPE are present
+            if "CHECK_USB_FOR_CONFIG" not in data:
+                msg = "Missing required field: CHECK_USB_FOR_CONFIG"
+                raise ConfigError(msg)
+            config.CHECK_USB_FOR_CONFIG = data["CHECK_USB_FOR_CONFIG"]
+
+            if "SDR_TYPE" not in data:
+                msg = "Missing required field: SDR_TYPE"
+                raise ConfigError(msg)
+            valid_sdr_types = ["USRP", "AIRSPY", "HACKRF", "GENERATOR"]
+            config.SDR_TYPE = data["SDR_TYPE"].upper()
+            if config.SDR_TYPE not in valid_sdr_types:
+                msg = f"Invalid SDR_TYPE: {config.SDR_TYPE}. Valid options: {', '.join(valid_sdr_types)}"
+                raise ValueError(msg)
+
         except KeyError as e:
             msg = f"Missing required field: {e.args[0]}"
-            logger.exception(msg)
             raise ConfigError(msg) from e
+        else:
+            return config
 
     @classmethod
     def _create_i2c_config(cls, data: dict[str, Any]) -> HardwareConfig:
@@ -81,6 +100,8 @@ class HardwareConfig:
 
         return cls(
             GPS_INTERFACE="I2C",
+            CHECK_USB_FOR_CONFIG=data["CHECK_USB_FOR_CONFIG"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_I2C_BUS=gps_i2c_bus,
             GPS_ADDRESS=gps_address,
             EPSG_CODE=epsg_code,
@@ -102,6 +123,8 @@ class HardwareConfig:
 
         return cls(
             GPS_INTERFACE="SERIAL",
+            CHECK_USB_FOR_CONFIG=data["CHECK_USB_FOR_CONFIG"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"],
             GPS_SERIAL_BAUDRATE=gps_serial_baudrate,
             EPSG_CODE=epsg_code,
@@ -127,6 +150,8 @@ class HardwareConfig:
 
         return cls(
             GPS_INTERFACE="SIMULATED",
+            CHECK_USB_FOR_CONFIG=data["CHECK_USB_FOR_CONFIG"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_SIMULATION_SPEED=simulated_speed,
             EPSG_CODE=epsg_code,
         )
@@ -139,3 +164,14 @@ class HardwareConfig:
             msg = f"Missing required fields for {interface_type} interface: {', '.join(missing_fields)}"
             logger.error(msg)
             raise ConfigError(msg)
+
+    @staticmethod
+    def _validate_sdr_type(sdr_type: str) -> str:
+        """Validate the SDR type."""
+        valid_sdr_types = ["USRP", "AIRSPY", "HACKRF", "GENERATOR"]
+        sdr_type_upper = sdr_type.upper()
+        if sdr_type_upper not in valid_sdr_types:
+            msg = f"Invalid SDR_TYPE: {sdr_type_upper}. Valid options are: {', '.join(valid_sdr_types)}"
+            logger.error(msg)
+            raise ConfigError(msg)
+        return sdr_type_upper
