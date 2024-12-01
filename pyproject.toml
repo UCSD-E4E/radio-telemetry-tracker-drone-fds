@@ -23,6 +23,7 @@ radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.0"
+pytest = "^8.3.3"
 
 [tool.ruff]
 line-length = 120
@@ -32,6 +33,10 @@ select = ["ALL"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--maxfail=5 --tb=short"
 
 [build-system]
 requires = ["poetry-core"]

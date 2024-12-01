@@ -10,12 +10,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
+from radio_telemetry_tracker_drone_fds.config.errors import ConfigError
+
 logger = logging.getLogger(__name__)
-
-
-class ConfigError(Exception):
-    """Custom exception for configuration errors."""
-
 
 @dataclass
 class PingFinderConfig:

@@ -7,14 +7,12 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from radio_telemetry_tracker_drone_fds.config.errors import ConfigError
+
 if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-class ConfigError(Exception):
-    """Custom exception for configuration errors."""
 
 
 @dataclass
