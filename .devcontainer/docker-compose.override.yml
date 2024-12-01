@@ -1,8 +1,0 @@
-services:
-  rtt-drone-fds:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    volumes:
-      - .:/workspace/radio-telemetry-tracker-drone-fds
-    command: /bin/bash -c "echo 'Container started' && tail -f /dev/null"

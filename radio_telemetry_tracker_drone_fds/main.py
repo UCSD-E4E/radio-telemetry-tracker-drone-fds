@@ -1,7 +1,6 @@
-"""Main module for the Radio Telemetry Tracker Drone FDS."""
+"""Main entry point for the Radio Telemetry Tracker Drone FDS application."""
+from __future__ import annotations
 
-import csv
-import json
 import logging
 import os
 import sys
@@ -9,43 +8,135 @@ import threading
 import time
 from pathlib import Path
 
-from radio_telemetry_tracker_drone_fds.config import config
-from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
-from radio_telemetry_tracker_drone_fds.ping_finder_module import PingFinderModule
+from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
+from radio_telemetry_tracker_drone_fds.gps import GPSInterface, GPSModule
+from radio_telemetry_tracker_drone_fds.gps.gps_interface import (
+    I2CGPSInterface,
+    SerialGPSInterface,
+    SimulatedGPSInterface,
+)
+from radio_telemetry_tracker_drone_fds.ping_finder import PingFinderModule
+from radio_telemetry_tracker_drone_fds.state.state_manager import StateManager
+from radio_telemetry_tracker_drone_fds.utils.logging_helper import log_heartbeat
+from radio_telemetry_tracker_drone_fds.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-def setup_logging() -> None:
-    """Configure basic logging settings."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
+def initialize_gps_interface(hardware_config: HardwareConfig) -> GPSInterface:
+    """Initialize and return appropriate GPS interface based on configuration."""
+    gps_interface_type = hardware_config.GPS_INTERFACE.upper()
+    if gps_interface_type == "I2C":
+        return I2CGPSInterface(
+            hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS,
+        )
+    if gps_interface_type == "SERIAL":
+        return SerialGPSInterface(
+            hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE,
+        )
+    if gps_interface_type == "SIMULATED":
+        return SimulatedGPSInterface(hardware_config.GPS_SIMULATION_SPEED)
+
+    logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
+    sys.exit(1)
 
 
-def check_sudo() -> None:
-    """Check if the program is running with sudo privileges."""
-    if os.geteuid() != 0:
-        logger.error("This program must be run with sudo privileges.")
-        sys.exit(1)
-
-
-def wait_for_gps_ready(gps_module: GPSModule, timeout: int = 300) -> bool:
-    """Wait for GPS module to be ready within the specified timeout.
-
-    Args:
-        gps_module (GPSModule): The GPS module to check.
-        timeout (int, optional): Maximum wait time in seconds. Defaults to 300.
+def find_ping_finder_config() -> Path | None:
+    """Search for ping_finder_config.json on mounted USB directories.
 
     Returns:
-        bool: True if GPS is ready, False if timeout occurred.
-
+        Path | None: Path to the configuration file if found, else None.
     """
+    usb_media_path = Path("/media") / os.getenv("USER", "")
+    if not usb_media_path.exists():
+        logger.error("USB media path %s does not exist.", usb_media_path)
+        return None
+
+    for device in usb_media_path.iterdir():
+        config_path = device / "ping_finder_config.json"
+        if config_path.exists():
+            logger.info("Found ping_finder_config.json at %s", config_path)
+            return config_path
+
+    logger.error("No ping_finder_config.json found on any USB devices.")
+    return None
+
+
+def main() -> None:
+    """Main function to initialize and start modules."""
+    setup_logging()
+
+    try:
+        # Load hardware configuration
+        hardware_config = HardwareConfig.load_from_file(Path("./config/hardware_config.json"))
+
+        # Initialize StateManager
+        state_manager = StateManager()
+
+        # Initialize GPS module
+        gps_interface = initialize_gps_interface(hardware_config)
+
+        # Initialize GPS module
+        gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE, state_manager)
+
+        # Start GPS module in a separate thread
+        gps_thread = threading.Thread(target=gps_module.run, daemon=True)
+        gps_thread.start()
+
+        # Wait for GPS to be ready
+        if not wait_for_gps_ready(state_manager):
+            logger.error("GPS failed to initialize within the timeout period.")
+            sys.exit(1)
+
+        # Find PingFinder configuration based on CHECK_USB_FOR_CONFIG
+        if hardware_config.CHECK_USB_FOR_CONFIG:
+            ping_finder_config_path = find_ping_finder_config()
+            if not ping_finder_config_path:
+                logger.error("PingFinder configuration not found on USB stick.")
+                sys.exit(1)
+        else:
+            ping_finder_config_path = Path("./config/ping_finder_config.json")
+            if not ping_finder_config_path.exists():
+                logger.error("PingFinder configuration not found at ./config/ping_finder_config.json.")
+                sys.exit(1)
+
+        # Load PingFinder configuration
+        ping_finder_config = PingFinderConfig.load_from_file(ping_finder_config_path)
+
+        # Initialize and start PingFinder module
+        ping_finder_module = PingFinderModule(
+            gps_module, ping_finder_config, state_manager, hardware_config.SDR_TYPE,
+        )
+        ping_finder_module.start()
+
+        # Start heartbeat thread
+        heartbeat_thread = threading.Thread(
+            target=print_heartbeat,
+            args=(state_manager, ping_finder_module),
+            daemon=True,
+        )
+        heartbeat_thread.start()
+
+        # Main loop
+        while True:
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt. Shutting down.")
+    except Exception:
+        logger.exception("An unexpected error occurred.")
+    finally:
+        if "gps_module" in locals():
+            gps_module.stop()
+        if "ping_finder_module" in locals():
+            ping_finder_module.stop()
+
+
+def wait_for_gps_ready(state_manager: StateManager, timeout: int = 300) -> bool:
+    """Wait for GPS module to be ready within the specified timeout."""
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if gps_module.is_ready():
+        if state_manager.get_gps_state() == "Locked":
             logger.info("GPS is ready.")
             return True
         time.sleep(1)
@@ -54,99 +145,21 @@ def wait_for_gps_ready(gps_module: GPSModule, timeout: int = 300) -> bool:
 
 
 def print_heartbeat(
-    gps_module: GPSModule,
-    ping_finder_module: PingFinderModule,
+    state_manager: StateManager,
+    ping_finder_module: PingFinderModule | None,
 ) -> None:
     """Continuously print GPS and PingFinder status information."""
     while True:
-        gps_data, gps_state = gps_module.get_gps_data()
-        ping_finder_state = ping_finder_module.get_state()
-
-        logger.info("GPS State: %s", gps_state.value)
-        logger.info("PingFinder State: %s", ping_finder_state.value)
-        logger.info(
-            "GPS Data: Lat: %s, Lon: %s, Alt: %s",
-            gps_data.latitude,
-            gps_data.longitude,
-            gps_data.altitude,
+        gps_data = state_manager.get_current_gps_data()
+        gps_state = state_manager.get_gps_state()
+        ping_finder_state = (
+            state_manager.get_ping_finder_state() if ping_finder_module else "Not Available"
         )
-        logger.info("-" * 40)
+
+        # Use logging helper to log heartbeat
+        log_heartbeat(gps_state, ping_finder_state, gps_data)
 
         time.sleep(5)
-
-
-def run() -> None:
-    """Initialize and run the main components of Radio Telemetry Tracker Drone FDS."""
-    setup_logging()
-    check_sudo()
-
-    logger.info("Starting run function")
-    logger.info("Configuration: %s", json.dumps(config.to_dict(), indent=2))
-
-    logger.info("Initializing GPS module")
-    gps_module = GPSModule()
-    logger.info("Initializing PingFinder module")
-    ping_finder_module = PingFinderModule(gps_module)
-
-    logger.info("Starting GPS thread")
-    gps_thread = threading.Thread(target=gps_module.run, daemon=True)
-    gps_thread.start()
-
-    logger.info("Waiting for GPS to be ready")
-    if not wait_for_gps_ready(gps_module):
-        logger.error("GPS not ready. Exiting the program.")
-        sys.exit(1)
-
-    logger.info(
-        "Waiting %d seconds before starting PingFinder",
-        config.WAIT_TO_START_TIMER,
-    )
-    time.sleep(config.WAIT_TO_START_TIMER)
-
-    logger.info("Starting PingFinder thread")
-    ping_finder_thread = threading.Thread(target=ping_finder_module.start, daemon=True)
-    ping_finder_thread.start()
-
-    logger.info("Starting heartbeat")
-    heartbeat_thread = threading.Thread(
-        target=print_heartbeat,
-        args=(gps_module, ping_finder_module),
-        daemon=True,
-    )
-    heartbeat_thread.start()
-
-    try:
-        logger.info("Running for %s seconds", config.RUN_TIMER)
-        time.sleep(config.RUN_TIMER)
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received")
-    finally:
-        logger.info("Stopping all modules")
-        gps_module.stop()
-        ping_finder_module.stop()
-        gps_thread.join(timeout=5)
-        ping_finder_thread.join(timeout=5)
-
-        logger.info("Getting final estimations")
-        final_estimations = ping_finder_module.get_final_estimations()
-
-        # Create a new CSV file for final estimations
-        output_dir = Path(config.PING_FINDER_CONFIG.get("output_dir", "./rtt_output/"))
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        final_estimations_filename = output_dir / f"final_estimations_{timestamp}.csv"
-
-        logger.info("Writing final estimations to %s", final_estimations_filename)
-        with final_estimations_filename.open("w", newline="") as csv_file:
-            csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(["Frequency", "Longitude", "Latitude", "Altitude"])
-            csv_writer.writerows(final_estimations)
-
-        logger.info("Final estimations saved. Exiting the program.")
-
-
-def main() -> None:
-    """Entry point for the Radio Telemetry Tracker Drone FDS application."""
-    run()
 
 
 if __name__ == "__main__":

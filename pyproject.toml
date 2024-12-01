@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "radio-telemetry-tracker-drone-fds"
-version = "0.0.1"
+version = "0.1.0"
 description = ""
 authors = ["Tyler Flar <tflar@ucsd.edu>"]
 packages = [
@@ -10,16 +10,33 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.12"
 smbus2 = "^0.4.3"
-rct_dsp2 = { path = "/workspace/radio_collar_tracker_dsp2" }
 aioconsole = "^0.8.0"
 psutil = "^6.0.0"
-
-[tool.poetry.dev-dependencies]
-ruff = "^0.6.3"
-black = "^24.8.0"
+rct-dsp2 = {git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1"}
+pyserial = "^3.5"
+pynmea2 = "^1.19.0"
+pyproj = "^3.7.0"
+transitions = "^0.9.2"
 
 [tool.poetry.scripts]
-rttDroneFDS = "radio_telemetry_tracker_drone_fds.main:main"
+radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.8.0"
+pytest = "^8.3.3"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--maxfail=5 --tb=short"
 
 [build-system]
 requires = ["poetry-core"]
