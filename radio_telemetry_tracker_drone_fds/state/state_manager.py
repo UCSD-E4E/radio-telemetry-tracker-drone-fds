@@ -61,7 +61,7 @@ class PingFinderStateMachine:
         # Define transitions
         self.machine.add_transition("configure", PingFinderState.IDLE.value, PingFinderState.CONFIGURED.value)
         self.machine.add_transition("start", PingFinderState.CONFIGURED.value, PingFinderState.RUNNING.value)
-        self.machine.add_transition("stop", PingFinderState.RUNNING.value, PingFinderState.IDLE.value)
+        self.machine.add_transition("stop", "*", PingFinderState.IDLE.value)  # Allow stop from any state
         self.machine.add_transition("error", "*", PingFinderState.ERROR.value)
         self.machine.add_transition("reset", PingFinderState.ERROR.value, PingFinderState.IDLE.value)
 

@@ -40,8 +40,6 @@ class PingFinderConfig:
         try:
             with path.open() as f:
                 data = json.load(f)
-            # Always set output_dir based on config file location
-            data["output_dir"] = str(path.parent / "rtt_output")
             return cls.from_dict(data)
         except json.JSONDecodeError as e:
             logger.exception("Invalid JSON in ping finder configuration file.")

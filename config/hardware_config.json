@@ -6,6 +6,13 @@
   "GPS_SERIAL_PORT": "/dev/ttyS0",
   "GPS_SERIAL_BAUDRATE": 9600,
   "GPS_SIMULATION_SPEED": 1.0,
-  "CHECK_USB_FOR_CONFIG": true,
-  "SDR_TYPE": "USRP"
+  "USE_USB_STORAGE": true,
+  "SDR_TYPE": "USRP",
+  "OPERATION_MODE": "ONLINE",
+  "RADIO_INTERFACE": "simulated",
+  "RADIO_PORT": "/dev/ttyUSB0",
+  "RADIO_BAUDRATE": 57600,
+  "RADIO_HOST": "localhost",
+  "RADIO_TCP_PORT": 50000,
+  "RADIO_SERVER_MODE": true
 }

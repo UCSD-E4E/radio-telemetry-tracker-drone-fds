@@ -20,8 +20,9 @@ def test_hardware_config_load_from_file(tmp_path: Path, hardware_config_data: di
     config = HardwareConfig.load_from_file(config_file)
     assert hardware_config_data["GPS_INTERFACE"] == config.GPS_INTERFACE  # noqa: S101
     assert hardware_config_data["EPSG_CODE"] == config.EPSG_CODE  # noqa: S101
-    assert hardware_config_data["CHECK_USB_FOR_CONFIG"] == config.CHECK_USB_FOR_CONFIG  # noqa: S101
+    assert hardware_config_data["USE_USB_STORAGE"] == config.USE_USB_STORAGE  # noqa: S101
     assert hardware_config_data["SDR_TYPE"] == config.SDR_TYPE  # noqa: S101
+    assert hardware_config_data["OPERATION_MODE"] == config.OPERATION_MODE  # noqa: S101
 
 
 def test_hardware_config_missing_file() -> None:
@@ -39,21 +40,14 @@ def test_hardware_config_invalid_json(tmp_path: Path) -> None:
 
 
 def test_ping_finder_config_load_from_file(tmp_path: Path, ping_finder_config_data: dict[str, Any]) -> None:
-    """Test loading ping finder configuration from a JSON file.
-
-    Args:
-        tmp_path: Fixture providing a temporary directory.
-        ping_finder_config_data: Fixture providing test configuration data.
-    """
+    """Test loading ping finder configuration from a JSON file."""
     config_file = tmp_path / "ping_finder_config.json"
     config_file.write_text(json.dumps(ping_finder_config_data))
     config = PingFinderConfig.load_from_file(config_file)
-    assert config.gain == ping_finder_config_data["gain"]  # noqa: S101
-    assert config.sampling_rate == ping_finder_config_data["sampling_rate"]  # noqa: S101
-    assert config.target_frequencies == ping_finder_config_data["target_frequencies"]  # noqa: S101
-    expected_output_dir = str(config_file.parent / "rtt_output")
-    assert config.output_dir == expected_output_dir  # noqa: S101
-
+    assert config.gain == ping_finder_config_data["gain"]
+    assert config.sampling_rate == ping_finder_config_data["sampling_rate"]
+    assert config.target_frequencies == ping_finder_config_data["target_frequencies"]
+    assert config.output_dir == ping_finder_config_data["output_dir"]
 
 
 def test_ping_finder_config_missing_file() -> None:

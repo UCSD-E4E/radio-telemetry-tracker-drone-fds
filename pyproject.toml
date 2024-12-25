@@ -17,6 +17,7 @@ pyserial = "^3.5"
 pynmea2 = "^1.19.0"
 pyproj = "^3.7.0"
 transitions = "^0.9.2"
+radio-telemetry-tracker-drone-comms-package = {git = "https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-comms-package.git"}
 
 [tool.poetry.scripts]
 radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main"
