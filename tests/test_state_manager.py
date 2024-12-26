@@ -4,6 +4,7 @@ import datetime as dt
 import pytest
 
 from radio_telemetry_tracker_drone_fds.state import GPSData, StateManager
+from radio_telemetry_tracker_drone_fds.state.state_manager import GPSState
 
 # Constants for test values
 TEST_LAT = 32.7157
@@ -13,12 +14,12 @@ TEST_ALTITUDE = 545.4
 def test_state_manager_gps_state() -> None:
     """Test StateManager's GPS state functionality."""
     state_manager = StateManager()
+    assert state_manager.get_gps_state() == "Uncreated"  # noqa: S101
+    state_manager.set_gps_state(GPSState.INITIALIZING)
     assert state_manager.get_gps_state() == "Initializing"  # noqa: S101
-    state_manager.update_gps_state("start_acquisition")
-    assert state_manager.get_gps_state() == "Acquiring Signal"  # noqa: S101
-    state_manager.update_gps_state("lock_signal")
-    assert state_manager.get_gps_state() == "Locked"  # noqa: S101
-    state_manager.update_gps_state("error")
+    state_manager.set_gps_state(GPSState.RUNNING)
+    assert state_manager.get_gps_state() == "Running"  # noqa: S101
+    state_manager.set_gps_state(GPSState.ERROR)
     assert state_manager.get_gps_state() == "Error"  # noqa: S101
 
 def test_state_manager_update_gps_data() -> None:

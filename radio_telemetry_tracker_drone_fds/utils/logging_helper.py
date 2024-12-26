@@ -53,29 +53,3 @@ def log_estimation(
             estimate[1],
             gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
         )
-        logger.info(
-            "Estimated Location - Easting: %.2f, Northing: %.2f",
-            estimate[0],
-            estimate[1],
-        )
-
-
-def log_heartbeat(
-    gps_state: str,
-    ping_finder_state: str,
-    gps_data: GPSData,
-) -> None:
-    """Log heartbeat information."""
-    logger.info(
-        "Heartbeat - GPS State: %s, PingFinder State: %s",
-        gps_state,
-        ping_finder_state,
-    )
-    logger.info(
-        "GPS Data - Easting: %s, Northing: %s, Altitude: %s, Heading: %s, EPSG Code: %s",
-        f"{gps_data.easting:.3f}" if gps_data.easting is not None else "N/A",
-        f"{gps_data.northing:.3f}" if gps_data.northing is not None else "N/A",
-        gps_data.altitude if gps_data.altitude is not None else "N/A",
-        gps_data.heading if gps_data.heading is not None else "N/A",
-        gps_data.epsg_code if gps_data.epsg_code is not None else "N/A",
-    )
