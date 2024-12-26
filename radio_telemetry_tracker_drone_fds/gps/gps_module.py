@@ -11,6 +11,7 @@ import pynmea2
 import pyproj
 
 from radio_telemetry_tracker_drone_fds.state import GPSData
+from radio_telemetry_tracker_drone_fds.state.state_manager import GPSState
 
 if TYPE_CHECKING:
     from radio_telemetry_tracker_drone_fds.gps.gps_interface import GPSInterface
@@ -35,15 +36,17 @@ class GPSModule:
         self._max_errors = 5
         self._epsg_code = epsg_code
         self._transformer = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self._epsg_code}", always_xy=True)
-        self._state_manager.update_gps_state("initialize")
         self._last_update_time = time.time()
+
+        # Set to IDLE after initialization
+        self._state_manager.set_gps_state(GPSState.IDLE)
 
     def _read_gps_data(self, total_length: int = 32) -> list[int] | None:
         data = self._gps_interface.read_gps_data(total_length)
         if data is None:
             self._error_count += 1
             if self._error_count >= self._max_errors:
-                self._state_manager.update_gps_state("error")
+                self._state_manager.set_gps_state(GPSState.ERROR)
                 logger.error("Maximum error count reached in GPS data reading.")
         else:
             self._error_count = 0  # Reset error count on successful read
@@ -59,8 +62,10 @@ class GPSModule:
 
         if data_updated and new_gps_data:
             self._update_gps_data(new_gps_data)
-        elif time.time() - self._last_update_time > self.GPS_DATA_TIMEOUT:
-            self._state_manager.update_gps_state("start_acquisition")
+        elif (time.time() - self._last_update_time > self.GPS_DATA_TIMEOUT and
+              self._state_manager.get_gps_state() == GPSState.RUNNING.value):
+            # If we timeout waiting for data, stay in INITIALIZING state
+            self._state_manager.set_gps_state(GPSState.INITIALIZING)
 
     def _process_sentences(self, sentences: list[str]) -> tuple[bool, GPSData | None]:
         """Parse and process a list of NMEA sentences."""
@@ -99,15 +104,16 @@ class GPSModule:
         self._state_manager.update_gps_data(new_gps_data)
         self._last_update_time = time.time()
 
-        # Only trigger lock_signal if we're not already in Locked state
+        # Only update to RUNNING if we have valid coordinates and in INITIALIZING state
         if new_gps_data.latitude is not None and new_gps_data.longitude is not None:
             current_state = self._state_manager.get_gps_state()
-            if current_state != "Locked":
-                self._state_manager.update_gps_state("lock_signal")
+            if current_state == GPSState.INITIALIZING.value:
+                self._state_manager.set_gps_state(GPSState.RUNNING)
 
     def run(self) -> None:
         """Continuously read and process GPS data."""
-        self._state_manager.update_gps_state("start_acquisition")
+        # Set to INITIALIZING when starting to wait for lock
+        self._state_manager.set_gps_state(GPSState.INITIALIZING)
         self._running.set()
 
         while self._running.is_set():
@@ -125,4 +131,4 @@ class GPSModule:
     def stop(self) -> None:
         """Stop the GPS module's data acquisition loop."""
         self._running.clear()
-        self._state_manager.update_gps_state("reset")
+        self._state_manager.set_gps_state(GPSState.IDLE)

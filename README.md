@@ -7,6 +7,9 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to t
   - [Hardware Requirements](#hardware-requirements)
   - [System Requirements](#system-requirements)
   - [System Dependencies](#system-dependencies)
+- [Operation Modes](#operation-modes)
+  - [Online Mode](#online-mode)
+  - [Offline Mode](#offline-mode)
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [Hardware Configuration](#hardware-configuration)
@@ -34,14 +37,50 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to t
 
 #### Connection Details
 - **SDR Connection:** USB 3.0 port
+  - Required for high-bandwidth data transfer
+  - Compatible with USRP, HackRF, and AirSpy devices
+  - Hot-pluggable, but requires system restart after connection
+
 - **GPS Connection:**
-  - **I2C GPS Module:** I2C Bus 1
-    - SDA: Pin XX
-    - SCL: Pin XX
-    - VCC: 3.3V
-    - GND: Ground
-  - **Serial GPS Module:** Serial port (e.g., /dev/ttyUSB0)
-- **USB Storage:** Any available USB port
+  1. **I2C GPS Module Example:**
+     - Connect to I2C Bus 1
+     - Pin Connections:
+       - SDA: Pin 3 (I2C1_SDA)
+       - SCL: Pin 5 (I2C1_SCL)
+       - VCC: Pin 1 (3.3V)
+       - GND: Pin 6 (Ground)
+     - Default I2C Address: 0x42
+     - Recommended: Sparkfun NEO-M9N
+
+  2. **Serial GPS Module Example:**
+     - Connect to available serial port (e.g., /dev/ttyUSB0)
+     - Default Baud Rate: 9600
+     - Supports NMEA 0183 protocol
+     - USB-to-Serial adapter recommended
+
+  3. **Simulated GPS Example:**
+     - No physical connections required
+     - Used for testing and development
+     - Configurable simulation speed
+
+- **Radio Connection (Online Mode):**
+  1. **Serial Radio Example:**
+     - Connect to USB port (e.g., /dev/ttyUSB0)
+     - Default Baud Rate: 57600
+     - Recommended: RFD900x Telemetry Modem
+
+
+  2. **Simulated Radio Example:**
+     - No physical connections required
+     - Uses TCP/IP for communication
+     - Default port: 50000
+     - Useful for local testing
+
+- **USB Storage:**
+  - Any available USB 2.0/3.0 port
+  - FAT32 formatted drive required
+  - Minimum recommended size: 8GB
+  - Automounted to /media/<USER>/usb/
 
 ### System Requirements
 - **Operating System:** Ubuntu 24.04 or later
@@ -64,6 +103,55 @@ sudo apt install -y \
     udisks2  # Required for USB automounting
 sudo uhd_images_downloader
 ```
+
+## Operation Modes
+
+The system primarily operates in Online Mode with Ground Control Station (GCS) integration, while also supporting an Offline Mode for autonomous operations.
+
+### Online Mode
+- Requires communication with the [Ground Control Station (GCS)](https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-gcs)
+- Configuration and commands received remotely
+- Real-time data transmission and stored locally on the drone
+- Provides real-time location estimation but requires laptop with GCS to be present and connected to the drone
+
+#### Communication Options
+1. **Serial Interface**
+   - Direct radio modem connection to GCS
+   - Configuration parameters:
+     ```json
+     {
+       "RADIO_INTERFACE": "SERIAL",
+       "RADIO_PORT": "/dev/ttyUSB0",
+       "RADIO_BAUDRATE": 57600
+     }
+     ```
+
+2. **Simulated Interface**
+   - TCP/IP-based communication with GCS
+   - Useful for testing and development
+   - Configuration parameters:
+     ```json
+     {
+       "RADIO_INTERFACE": "SIMULATED",
+       "RADIO_HOST": "localhost",
+       "RADIO_TCP_PORT": 50000,
+       "RADIO_SERVER_MODE": true
+     }
+     ```
+
+### Offline Mode
+- Operates independently without GCS
+- Configuration loaded from local files
+- Data stored locally for later retrieval
+
+#### Configuration Sources
+1. **USB Storage** (if `USE_USB_STORAGE: true`)
+   - Searches for `ping_finder_config.json` on USB drive
+   - Creates output directory: `/media/<USER>/usb/rtt_output/`
+
+2. **Local Storage** (if `USE_USB_STORAGE: false`)
+   - Uses `./config/ping_finder_config.json`
+   - Creates output directory: `./rtt_output/`
 
 ## Installation
 
@@ -105,11 +193,18 @@ Create or modify `./config/hardware_config.json`:
   "EPSG_CODE": 32611,
   "GPS_I2C_BUS": 1,
   "GPS_ADDRESS": "0x42",
-  "GPS_SERIAL_PORT": "/dev/ttyS0",
+  "GPS_SERIAL_PORT": "/dev/ttyUSB0",
   "GPS_SERIAL_BAUDRATE": 9600,
   "GPS_SIMULATION_SPEED": 1.0,
-  "CHECK_USB_FOR_CONFIG": true,
-  "SDR_TYPE": "USRP"
+  "USE_USB_STORAGE": true,
+  "SDR_TYPE": "USRP",
+  "OPERATION_MODE": "ONLINE",
+  "RADIO_INTERFACE": "SERIAL",
+  "RADIO_PORT": "/dev/ttyUSB1",
+  "RADIO_BAUDRATE": 57600,
+  "RADIO_HOST": "localhost",
+  "RADIO_TCP_PORT": 50000,
+  "RADIO_SERVER_MODE": true
 }
 ```
 
@@ -121,8 +216,15 @@ Create or modify `./config/hardware_config.json`:
 - **GPS_SERIAL_PORT:** (For Serial interface) Serial port for the GPS module (e.g., `"/dev/ttyS0"`).
 - **GPS_SERIAL_BAUDRATE:** (For Serial interface) Serial baud rate for the GPS module (e.g., `9600`).
 - **GPS_SIMULATION_SPEED:** (For Simulated interface) Speed multiplier for simulated GPS data (e.g., `1.0`).
-- **CHECK_USB_FOR_CONFIG:** `true` or `false`. Whether to check USB storage for configuration.
+- **USE_USB_STORAGE:** `true` or `false`. Whether to use USB storage for configuration (only if `OPERATION_MODE` is `"OFFLINE"`) and output.
 - **SDR_TYPE:** `"USRP"`, `"HACKRF"`, or `"AIRSPY"`. Selects the SDR type.
+- **OPERATION_MODE:** `"ONLINE"` or `"OFFLINE"`. Selects the operation mode.
+- **RADIO_INTERFACE:** (For Online mode) `"SERIAL"` or `"SIMULATED"`. Selects the radio communication interface.
+- **RADIO_PORT:** (For Serial interface) Serial port for radio communication (e.g., `"/dev/ttyUSB0"`).
+- **RADIO_BAUDRATE:** (For Serial interface) Baud rate for radio communication (e.g., `57600`).
+- **RADIO_HOST:** (For Simulated interface) Host address for simulated radio (e.g., `"localhost"`).
+- **RADIO_TCP_PORT:** (For Simulated interface) TCP port for simulated radio (e.g., `50000`).
+- **RADIO_SERVER_MODE:** (For Simulated interface) `true` or `false`. Whether to run radio as the server.
 
 ### USB Configuration
 1. **Create Automount Service:**
@@ -151,7 +253,7 @@ sudo systemctl start usb-automount
 
 2. **Prepare USB Configuration:**
 - Format USB drive as FAT32
-- Create `ping_finder_config.json` in the root directory:
+- Create `ping_finder_config.json` in the root directory (for offline mode):
 ```json
 {
     "gain": 56.0,
@@ -166,44 +268,34 @@ sudo systemctl start usb-automount
     "target_frequencies": [173043000]
 }
 ```
-**Note:** The application will check for `ping_finder_config.json` on the USB drive if `CHECK_USB_FOR_CONFIG` is `true` in `hardware_config.json`. If `false`, the application will check for `./config/ping_finder_config.json`.
 
 ## Usage
 
-1. **Run Application:**
+### Online Mode Usage
+1. **Start the Ground Control Station**
+   - Follow GCS setup instructions
+   - Ensure radio communication is configured
+
+2. **Launch FDS**
     ```bash
     poetry run radio_telemetry_tracker_drone_fds
     ```
 
-2. **Development with Poetry Shell:**
-    ```bash
-    # Enter poetry shell
-    poetry shell
-    # Install dependencies + dev tools
-    poetry install --with dev
-    # Run application
-    radio_telemetry_tracker_drone_fds
-    # Run tests
-    pytest
-    # Exit poetry shell
-    exit
-    ```
-
-3. **Code Formatting with Ruff:**
-    ```bash
-    poetry run ruff check --unsafe-fixes --fix
-    ```
-    *Use this command to automatically fix code style issues.*
+3. **Operation**
+   - Wait for GCS connection
+   - Follow GCS interface for configuration and control
+   - Monitor real-time data through GCS
 
 ## Automatic Startup
 
-To ensure the application runs automatically on system startup, you can create a **systemd** service.
+To ensure the application runs automatically on system startup, you can create a **systemd** service. This is useful so when the microprocessor is powered on by the drone and the application can run without the need to manually start it. The configuration is also only loaded in offline mode when the program is started.
 
 1. **Create a systemd Service File:**
 
     Create a file named `radio_telemetry_tracker.service` in `/etc/systemd/system/`:
 
-    ```bash: /etc/systemd/system/radio_telemetry_tracker.service
+    ```bash
+    sudo tee /etc/systemd/system/radio_telemetry_tracker.service <<EOF
     [Unit]
     Description=Radio Telemetry Tracker Drone FDS Service
     After=network.target
@@ -218,6 +310,7 @@ To ensure the application runs automatically on system startup, you can create a
 
     [Install]
     WantedBy=multi-user.target
+    EOF
     ```
 
     **Replace the following placeholders:**
@@ -241,28 +334,33 @@ To ensure the application runs automatically on system startup, you can create a
     sudo journalctl -u radio_telemetry_tracker.service -f
     ```
 
-**Note:** Ensure that all paths and usernames are correctly specified. The `Restart=always` directive ensures that the service restarts automatically if it crashes.
-
 ## Troubleshooting
 
-- **USB Issues:**
-    - Verify USB is mounted: `mount | grep usbstick`
-    - Check UUID: `sudo blkid`
-    - Manual mount: `sudo mount -o uid=1000,gid=1000 /dev/sdX1 /media/usbstick`
-    - Review logs: `dmesg | tail`
+### Online Mode Issues
+- **Communication Failures**
+  ```bash
+  # Test serial connection
+  minicom -D /dev/ttyUSB0 -b 57600
+  
+  # Check TCP connection
+  netstat -an | grep 50000
+  
+  # Monitor radio logs
+  journalctl -u radio_telemetry_tracker.service | grep "Radio"
+  ```
 
-- **GPS Not Ready:**
-    - Confirm GPS hardware connection.
-    - Validate `hardware_config.json` settings.
-    - Check system logs for GPS errors.
+- **Configuration Issues**
+  - Verify radio interface settings
+  - Check port permissions
+  - Confirm baudrate matches base station
+  - Test network connectivity for simulated mode
 
-- **Permissions:**
-    - Run application with necessary privileges.
-    - Ensure user has read/write access to config and output directories.
-
-- **Service Issues:**
-    - Check service status: `sudo systemctl status radio_telemetry_tracker.service`
-    - View logs: `sudo journalctl -u radio_telemetry_tracker.service -f`
+### General Issues
+- **Data Storage**
+  - Monitor available space
+  - Check write permissions
+  - Verify USB mount status
+  - Review output directory structure
 
 ## License
 

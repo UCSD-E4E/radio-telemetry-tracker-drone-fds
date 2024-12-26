@@ -22,8 +22,9 @@ def hardware_config_data() -> dict[str, Any]:
         "GPS_SERIAL_PORT": "/dev/ttyS0",
         "GPS_SERIAL_BAUDRATE": 9600,
         "GPS_SIMULATION_SPEED": 1.0,
-        "CHECK_USB_FOR_CONFIG": False,
+        "USE_USB_STORAGE": False,
         "SDR_TYPE": "GENERATOR",
+        "OPERATION_MODE": "OFFLINE",
     }
 
 
