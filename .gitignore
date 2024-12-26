@@ -163,3 +163,7 @@ cython_debug/
 
 deleteme/
 .ruff_cache/
+
+rtt_output/
+output/
+test_output/

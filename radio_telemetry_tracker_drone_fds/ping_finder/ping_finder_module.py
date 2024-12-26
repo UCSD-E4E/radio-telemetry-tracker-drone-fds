@@ -9,13 +9,15 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from radio_telemetry_tracker_drone_comms_package import DroneComms, LocEstData, PingData
 from rct_dsp2 import SDR_TYPE_AIRSPY, SDR_TYPE_GENERATOR, SDR_TYPE_HACKRF, SDR_TYPE_USRP, PingFinder
 from rct_dsp2.localization import LocationEstimator
 
+from radio_telemetry_tracker_drone_fds.state.state_manager import PingFinderState, StateManager
+
 if TYPE_CHECKING:
     from radio_telemetry_tracker_drone_fds.config import PingFinderConfig
-    from radio_telemetry_tracker_drone_fds.gps_module import GPSModule
-    from radio_telemetry_tracker_drone_fds.state_manager import StateManager
+    from radio_telemetry_tracker_drone_fds.gps.gps_module import GPSModule
 
 from radio_telemetry_tracker_drone_fds.utils.logging_helper import log_estimation, log_ping
 
@@ -31,6 +33,7 @@ class PingFinderModule:
         config: PingFinderConfig,
         state_manager: StateManager,
         sdr_type: str,
+        drone_comms: DroneComms | None = None,
     ) -> None:
         """Initialize PingFinderModule with configured PingFinder, GPSModule, and StateManager."""
         self._gps_module = gps_module
@@ -38,12 +41,16 @@ class PingFinderModule:
         self._state_manager = state_manager
         self._run_num = config.run_num
         self._stop_event = threading.Event()
+        self._drone_comms = drone_comms
+        self._thread: threading.Thread | None = None
+
+        # Initialize and configure
         self._initialize_csv_log(config)
         self._configure_ping_finder(config, sdr_type)
         self._location_estimator = LocationEstimator(self._get_current_location)
 
-        # Set initial state
-        self._state_manager.update_ping_finder_state("configure")
+        # Set to IDLE after initialization
+        self._state_manager.set_ping_finder_state(PingFinderState.IDLE)
 
     def _configure_ping_finder(self, config: PingFinderConfig, sdr_type: str) -> None:
         """Apply configuration to PingFinder instance."""
@@ -132,7 +139,6 @@ class PingFinderModule:
         # Use the ping's timestamp to get the closest GPS data
         target_timestamp = now.timestamp()
         gps_data = self._state_manager.get_gps_data_closest_to(target_timestamp)
-
         if gps_data is None:
             logger.error("No GPS data available for the ping at timestamp %s", now.isoformat())
             return
@@ -145,6 +151,18 @@ class PingFinderModule:
             amplitude,
             gps_data,
         )
+
+        # Send ping data if in ONLINE mode
+        if self._drone_comms is not None:
+            ping_data = PingData(
+                frequency=frequency,
+                amplitude=amplitude,
+                easting=gps_data.easting,
+                northing=gps_data.northing,
+                altitude=gps_data.altitude,
+                epsg_code=gps_data.epsg_code,
+            )
+            self._drone_comms.send_ping_data(ping_data)
 
         # Add ping to location estimator
         self._location_estimator.add_ping(now, amplitude, frequency)
@@ -159,6 +177,17 @@ class PingFinderModule:
                 estimate,
                 gps_data,
             )
+
+            # Send location estimation if in ONLINE mode
+            if self._drone_comms is not None:
+                loc_est_data = LocEstData(
+                    frequency=frequency,
+                    easting=estimate[0],
+                    northing=estimate[1],
+                    epsg_code=gps_data.epsg_code,
+                )
+                self._drone_comms.send_loc_est_data(loc_est_data)
+
             logger.info("=" * 60)
             logger.info("Estimated Location:")
             logger.info("  Easting:  %.2f", estimate[0])
@@ -167,33 +196,42 @@ class PingFinderModule:
 
     def start(self) -> None:
         """Start the ping finding operation in a separate thread."""
-        if self._state_manager.get_ping_finder_state() == "Configured":
+        if self._state_manager.get_ping_finder_state() == PingFinderState.IDLE.value:
+            # Set to INITIALIZING while starting up
+            self._state_manager.set_ping_finder_state(PingFinderState.INITIALIZING)
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._run)
-            self._thread.start()
-            self._state_manager.update_ping_finder_state("start")
+
+            try:
+                self._ping_finder.start()
+                self._thread = threading.Thread(target=self._run)
+                self._thread.start()
+                # Set to RUNNING once thread is started
+                self._state_manager.set_ping_finder_state(PingFinderState.RUNNING)
+            except Exception:
+                logger.exception("Failed to start PingFinder")
+                self._state_manager.set_ping_finder_state(PingFinderState.ERROR)
 
     def stop(self) -> None:
         """Stop the ping finding operation."""
-        if self._state_manager.get_ping_finder_state() == "Running":
+        current_state = self._state_manager.get_ping_finder_state()
+        if current_state != PingFinderState.IDLE.value:  # Only proceed if not already idle
             self._stop_event.set()
             self._ping_finder.stop()
             if self._thread:
                 self._thread.join()
-            self._state_manager.update_ping_finder_state("stop")
+            self._state_manager.set_ping_finder_state(PingFinderState.IDLE)
 
     def _run(self) -> None:
         """Ping finding operation loop."""
         try:
-            self._ping_finder.start()
             while not self._stop_event.is_set():
                 self._stop_event.wait(0.1)
         except (OSError, RuntimeError):
             logger.exception("PingFinder error")
-            self._state_manager.update_ping_finder_state("error")
+            self._state_manager.set_ping_finder_state(PingFinderState.ERROR)
         finally:
-            if self._state_manager.get_ping_finder_state() != "Error":
-                self._state_manager.update_ping_finder_state("stop")
+            if self._state_manager.get_ping_finder_state() != PingFinderState.ERROR.value:
+                self._state_manager.set_ping_finder_state(PingFinderState.IDLE)
 
     def _get_current_location(self, timestamp: dt.datetime | None = None) -> tuple[float, float, float]:
         """Get current GPS location in UTM coordinates based on the closest GPS data to the given timestamp."""
@@ -215,3 +253,27 @@ class PingFinderModule:
             if estimate is not None:
                 final_estimations.append((frequency, *estimate))
         return final_estimations
+
+    def reconfigure(self, config: PingFinderConfig, sdr_type: str) -> None:
+        """Reconfigure the ping finder with new settings.
+
+        This will stop any running operations and reinitialize with new config.
+        """
+        # Stop if running
+        if self._state_manager.get_ping_finder_state() != PingFinderState.IDLE.value:
+            self.stop()
+
+        # Set to UNCREATED while reconfiguring
+        self._state_manager.set_ping_finder_state(PingFinderState.UNCREATED)
+
+        # Create new PingFinder instance
+        self._ping_finder = PingFinder()
+        self._run_num = config.run_num
+
+        # Reinitialize with new config
+        self._initialize_csv_log(config)
+        self._configure_ping_finder(config, sdr_type)
+        self._location_estimator = LocationEstimator(self._get_current_location)
+
+        # Set to IDLE after reconfiguration
+        self._state_manager.set_ping_finder_state(PingFinderState.IDLE)

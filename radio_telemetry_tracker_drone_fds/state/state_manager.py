@@ -1,4 +1,4 @@
-"""Module for managing drone state, including GPS and PingFinder states, using state machines."""
+"""Module for managing drone state, including GPS and PingFinder states."""
 
 from __future__ import annotations
 
@@ -9,8 +9,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from threading import Lock
 
-from transitions import Machine
-
 logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 1000
@@ -18,52 +16,20 @@ MAX_HISTORY = 1000
 # GPS State Definitions
 class GPSState(Enum):
     """Enumeration of GPS states."""
+    UNCREATED = "Uncreated"
+    IDLE = "Idle"
     INITIALIZING = "Initializing"
-    ACQUIRING = "Acquiring Signal"
-    LOCKED = "Locked"
+    RUNNING = "Running"
     ERROR = "Error"
-
-class GPSStateMachine:
-    """State machine for managing GPS state transitions."""
-
-    def __init__(self) -> None:
-        """Initialize the GPS state machine with states and transitions."""
-        self.states = [state.value for state in GPSState]
-        self.machine = Machine(model=self, states=self.states, initial=GPSState.INITIALIZING.value)
-
-        # Define transitions
-        self.machine.add_transition("initialize", "*", GPSState.INITIALIZING.value)
-        self.machine.add_transition(
-            "start_acquisition",
-            [GPSState.INITIALIZING.value, GPSState.ERROR.value],
-            GPSState.ACQUIRING.value,
-        )
-        self.machine.add_transition("lock_signal", GPSState.ACQUIRING.value, GPSState.LOCKED.value)
-        self.machine.add_transition("error", "*", GPSState.ERROR.value)
-        self.machine.add_transition("reset", [GPSState.ERROR.value, GPSState.LOCKED.value], GPSState.INITIALIZING.value)
 
 # PingFinder State Definitions
 class PingFinderState(Enum):
     """Enumeration of PingFinder states."""
+    UNCREATED = "Uncreated"
     IDLE = "Idle"
-    CONFIGURED = "Configured"
+    INITIALIZING = "Initializing"
     RUNNING = "Running"
     ERROR = "Error"
-
-class PingFinderStateMachine:
-    """State machine for managing PingFinder state transitions."""
-
-    def __init__(self) -> None:
-        """Initialize the PingFinder state machine with states and transitions."""
-        self.states = [state.value for state in PingFinderState]
-        self.machine = Machine(model=self, states=self.states, initial=PingFinderState.IDLE.value)
-
-        # Define transitions
-        self.machine.add_transition("configure", PingFinderState.IDLE.value, PingFinderState.CONFIGURED.value)
-        self.machine.add_transition("start", PingFinderState.CONFIGURED.value, PingFinderState.RUNNING.value)
-        self.machine.add_transition("stop", PingFinderState.RUNNING.value, PingFinderState.IDLE.value)
-        self.machine.add_transition("error", "*", PingFinderState.ERROR.value)
-        self.machine.add_transition("reset", PingFinderState.ERROR.value, PingFinderState.IDLE.value)
 
 # GPS Data
 @dataclass
@@ -83,24 +49,20 @@ class StateManager:
     """Centralized State Manager with GPS and PingFinder states and data."""
 
     def __init__(self) -> None:
-        """Initialize the state manager with GPS and PingFinder state machines."""
+        """Initialize the state manager."""
         self._lock = Lock()
-        self.gps_state_machine = GPSStateMachine()
-        self.ping_finder_state_machine = PingFinderStateMachine()
-        self._gps_data_history: list[tuple[float, GPSData]] = []  # List of (timestamp, GPSData)
+        self._gps_state = GPSState.UNCREATED
+        self._ping_finder_state = PingFinderState.UNCREATED
+        self._gps_data_history: list[tuple[float, GPSData]] = []
         self._current_gps_data: GPSData = GPSData()
 
-    def update_gps_state(self, trigger: str) -> None:
-        """Trigger a state transition for the GPS state machine."""
+    def set_gps_state(self, state: GPSState) -> None:
+        """Set the GPS state."""
         with self._lock:
-            old_state = self.gps_state_machine.state
-            try:
-                getattr(self.gps_state_machine, trigger)()
-                new_state = self.gps_state_machine.state
-                if old_state != new_state:
-                    logger.info("[GPS] State changed from %s to %s", old_state, new_state)
-            except Exception:
-                logger.exception("[GPS] Failed to trigger '%s'", trigger)
+            old_state = self._gps_state
+            self._gps_state = state
+            if old_state != state:
+                logger.info("[GPS] State changed from %s to %s", old_state.value, state.value)
 
     def update_gps_data(self, data: GPSData) -> None:
         """Update the current GPS data and maintain history."""
@@ -113,7 +75,7 @@ class StateManager:
     def get_gps_state(self) -> str:
         """Retrieve the current GPS state."""
         with self._lock:
-            return self.gps_state_machine.state
+            return self._gps_state.value
 
     def get_gps_data_closest_to(self, timestamp: float) -> GPSData | None:
         """Retrieve the GPS data closest to the given timestamp."""
@@ -141,20 +103,15 @@ class StateManager:
         with self._lock:
             return self._current_gps_data
 
-    # PingFinder State Methods
-    def update_ping_finder_state(self, trigger: str) -> None:
-        """Update the PingFinder state using a trigger."""
+    def set_ping_finder_state(self, state: PingFinderState) -> None:
+        """Set the PingFinder state."""
         with self._lock:
-            old_state = self.ping_finder_state_machine.state
-            try:
-                getattr(self.ping_finder_state_machine, trigger)()
-                new_state = self.ping_finder_state_machine.state
-                if old_state != new_state:
-                    logger.info("[PingFinder] State changed from %s to %s", old_state, new_state)
-            except Exception:
-                logger.exception("[PingFinder] Failed to trigger '%s'", trigger)
+            old_state = self._ping_finder_state
+            self._ping_finder_state = state
+            if old_state != state:
+                logger.info("[PingFinder] State changed from %s to %s", old_state.value, state.value)
 
     def get_ping_finder_state(self) -> str:
         """Retrieve the current PingFinder state."""
         with self._lock:
-            return self.ping_finder_state_machine.state
+            return self._ping_finder_state.value
