@@ -80,7 +80,7 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to t
   - Any available USB 2.0/3.0 port
   - FAT32 formatted drive required
   - Minimum recommended size: 8GB
-  - Automounted to /media/<USER>/usb/
+  - Automounted to /media/\<USER\>/usb/
 
 ### System Requirements
 - **Operating System:** Ubuntu 24.04 or later
