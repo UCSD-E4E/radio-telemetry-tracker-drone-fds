@@ -33,7 +33,14 @@ TEST_PING_MIN_SNR = 10
 @pytest.fixture
 def mock_drone_comms() -> MagicMock:
     """Fixture for mocked DroneComms."""
-    return cast(MagicMock, MagicMock(spec=DroneComms))
+    mock = cast(MagicMock, MagicMock(spec=DroneComms))
+    # Configure send methods to return (packet_id, need_ack, timestamp)
+    mock.send_sync_response.return_value = (1, False, 0)
+    mock.send_start_response.return_value = (2, False, 0)
+    mock.send_stop_response.return_value = (3, False, 0)
+    mock.send_config_response.return_value = (4, False, 0)
+    mock.send_error.return_value = (5, False, 0)
+    return mock
 
 
 @pytest.fixture
@@ -55,13 +62,32 @@ def mock_hardware_config() -> MagicMock:
 def mock_ping_finder() -> MagicMock:
     """Fixture for mocked PingFinder."""
     mock = cast(MagicMock, MagicMock(spec=PingFinder))
-    # Ensure start() and stop() methods don't raise exceptions
-    mock.start.return_value = None
-    mock.stop.return_value = None
-    # Mock required attributes
-    mock.sdr_type = "GENERATOR"
-    mock.gain = TEST_GAIN
-    mock.sampling_rate = TEST_SAMPLING_RATE
+
+    # Configure methods to not raise exceptions and handle state transitions
+    def mock_start() -> None:
+        """Mock start that doesn't raise exceptions."""
+        return
+
+    def mock_stop() -> None:
+        """Mock stop that doesn't raise exceptions."""
+        return
+
+    mock.start = MagicMock(side_effect=mock_start)
+    mock.stop = MagicMock(side_effect=mock_stop)
+    mock.register_callback = MagicMock(return_value=None)
+
+    # Mock required attributes that will be set by configure
+    mock.sdr_type = None
+    mock.gain = None
+    mock.sampling_rate = None
+    mock.center_frequency = None
+    mock.enable_test_data = None
+    mock.ping_width_ms = None
+    mock.ping_min_snr = None
+    mock.ping_max_len_mult = None
+    mock.ping_min_len_mult = None
+    mock.target_frequencies = None
+
     return mock
 
 
@@ -98,14 +124,20 @@ def test_initialization(online_manager: OnlinePingFinderManager, mock_drone_comm
 
 def test_sync_request_handler(online_manager: OnlinePingFinderManager, mock_drone_comms: MagicMock) -> None:
     """Test sync request handler."""
-    # Test when GPS is not running
-    online_manager._handle_sync_request(SyncRequestData())  # noqa: SLF001
-    mock_drone_comms.send_sync_response.assert_called_with(SyncResponseData(success=False))
-
-    # Test when GPS is running
+    # Set GPS state to Running
     online_manager._state_manager.set_gps_state(GPSState.RUNNING)  # noqa: SLF001
+
+    # Handle sync request
     online_manager._handle_sync_request(SyncRequestData())  # noqa: SLF001
     mock_drone_comms.send_sync_response.assert_called_with(SyncResponseData(success=True))
+
+    # Simulate acknowledgment callback
+    packet_id = mock_drone_comms.send_sync_response.return_value[0]
+    online_manager._handle_ack_success(packet_id)  # noqa: SLF001
+
+    # Verify state is reset
+    assert online_manager._ping_finder_module is None  # noqa: S101, SLF001
+    assert online_manager._state_manager.get_ping_finder_state() == PingFinderState.UNCREATED.value  # noqa: S101, SLF001
 
 
 def test_start_request_handler_not_configured(
@@ -115,6 +147,8 @@ def test_start_request_handler_not_configured(
     online_manager._handle_start_request(StartRequestData())  # noqa: SLF001
     mock_drone_comms.send_start_response.assert_called_with(StartResponseData(success=False))
 
+    # No acknowledgment callback needed since no pending action was stored
+
 
 def test_stop_request_handler_not_configured(
     online_manager: OnlinePingFinderManager, mock_drone_comms: MagicMock,
@@ -122,6 +156,8 @@ def test_stop_request_handler_not_configured(
     """Test stop request handler when ping finder is not configured."""
     online_manager._handle_stop_request(StopRequestData())  # noqa: SLF001
     mock_drone_comms.send_stop_response.assert_called_with(StopResponseData(success=False))
+
+    # No acknowledgment callback needed since no pending action was stored
 
 
 def test_config_request_handler(online_manager: OnlinePingFinderManager, mock_drone_comms: MagicMock) -> None:
@@ -139,8 +175,15 @@ def test_config_request_handler(online_manager: OnlinePingFinderManager, mock_dr
         target_frequencies=[TEST_CENTER_FREQ],
     )
 
+    # Handle config request
     online_manager._handle_config_request(config_data)  # noqa: SLF001
     mock_drone_comms.send_config_response.assert_called_with(ConfigResponseData(success=True))
+
+    # Simulate acknowledgment callback
+    packet_id = mock_drone_comms.send_config_response.return_value[0]
+    online_manager._handle_ack_success(packet_id)  # noqa: SLF001
+
+    # Now the ping finder module should be created
     assert online_manager._ping_finder_module is not None  # noqa: S101, SLF001
 
 
@@ -169,16 +212,34 @@ def test_start_stop_after_config(
         "radio_telemetry_tracker_drone_fds.ping_finder.ping_finder_module.PingFinder",
         return_value=mock_ping_finder,
     ):
+        # Handle config request and simulate acknowledgment
         online_manager._handle_config_request(config_data)  # noqa: SLF001
+        packet_id = mock_drone_comms.send_config_response.return_value[0]
+        online_manager._handle_ack_success(packet_id)  # noqa: SLF001
 
-        # Test start
+        # Verify state is IDLE after configuration
+        assert online_manager._state_manager.get_ping_finder_state() == PingFinderState.IDLE.value  # noqa: S101, SLF001
+
+        # Test start request
         online_manager._handle_start_request(StartRequestData())  # noqa: SLF001
         mock_drone_comms.send_start_response.assert_called_with(StartResponseData(success=True))
+
+        # Simulate start acknowledgment
+        packet_id = mock_drone_comms.send_start_response.return_value[0]
+        online_manager._handle_ack_success(packet_id)  # noqa: SLF001
+
+        # Verify state is RUNNING after start
         assert online_manager._state_manager.get_ping_finder_state() == PingFinderState.RUNNING.value  # noqa: S101, SLF001
 
-        # Test stop
+        # Test stop request
         online_manager._handle_stop_request(StopRequestData())  # noqa: SLF001
         mock_drone_comms.send_stop_response.assert_called_with(StopResponseData(success=True))
+
+        # Simulate stop acknowledgment
+        packet_id = mock_drone_comms.send_stop_response.return_value[0]
+        online_manager._handle_ack_success(packet_id)  # noqa: SLF001
+
+        # Verify state is IDLE after stop
         assert online_manager._state_manager.get_ping_finder_state() == PingFinderState.IDLE.value  # noqa: S101, SLF001
 
 
