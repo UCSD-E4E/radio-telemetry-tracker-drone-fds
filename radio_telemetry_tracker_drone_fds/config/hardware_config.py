@@ -75,7 +75,7 @@ class HardwareConfig:
         elif config.RADIO_INTERFACE.lower() == "simulated":
             config.RADIO_HOST = data["RADIO_HOST"]
             config.RADIO_TCP_PORT = int(data["RADIO_TCP_PORT"])
-        config.RADIO_SERVER_MODE = data.get("RADIO_SERVER_MODE", False)
+        config.RADIO_SERVER_MODE = True
 
     @classmethod
     def _create_gps_config(cls, data: dict[str, Any]) -> HardwareConfig:
@@ -238,7 +238,3 @@ class HardwareConfig:
             except ValueError as e:
                 msg = "RADIO_TCP_PORT must be an integer"
                 raise ConfigError(msg) from e
-
-        if "RADIO_SERVER_MODE" in data and not isinstance(data["RADIO_SERVER_MODE"], bool):
-            msg = "RADIO_SERVER_MODE must be a boolean"
-            raise ConfigError(msg)
