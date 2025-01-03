@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "radio-telemetry-tracker-drone-fds"
-version = "0.3.0"
+version = "0.3.1"
 description = "Radio Telemetry Tracker Drone FDS"
 authors = ["Tyler Flar <tflar@ucsd.edu>"]
 packages = [

@@ -13,6 +13,5 @@
   "RADIO_PORT": "/dev/ttyUSB0",
   "RADIO_BAUDRATE": 57600,
   "RADIO_HOST": "localhost",
-  "RADIO_TCP_PORT": 50000,
-  "RADIO_SERVER_MODE": true
+  "RADIO_TCP_PORT": 50000
 }
