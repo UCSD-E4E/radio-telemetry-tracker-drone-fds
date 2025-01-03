@@ -127,8 +127,14 @@ def test_sync_request_handler(online_manager: OnlinePingFinderManager, mock_dron
     # Set GPS state to Running
     online_manager._state_manager.set_gps_state(GPSState.RUNNING)  # noqa: SLF001
 
-    # Handle sync request
-    online_manager._handle_sync_request(SyncRequestData())  # noqa: SLF001
+    # Handle sync request with required arguments
+    sync_request = SyncRequestData(
+        packet_id=1,
+        timestamp=0,
+        ack_timeout=2.0,
+        max_retries=5,
+    )
+    online_manager._handle_sync_request(sync_request)  # noqa: SLF001
     mock_drone_comms.send_sync_response.assert_called_with(SyncResponseData(success=True))
 
     # Simulate acknowledgment callback
