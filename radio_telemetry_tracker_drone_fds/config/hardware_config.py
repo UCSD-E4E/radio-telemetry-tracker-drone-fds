@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import yaml
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -20,10 +20,8 @@ class HardwareConfig:
     """Configuration for hardware components."""
 
     GPS_INTERFACE: str
-    EPSG_CODE: int
     USE_USB_STORAGE: bool
     SDR_TYPE: str
-    OPERATION_MODE: str
     GPS_I2C_BUS: int | None = None
     GPS_ADDRESS: int | None = None
     GPS_SERIAL_PORT: str | None = None
@@ -38,18 +36,18 @@ class HardwareConfig:
 
     @classmethod
     def load_from_file(cls, path: Path) -> HardwareConfig:
-        """Load hardware configuration from a JSON file."""
+        """Load hardware configuration from a YAML file."""
         if not path.exists():
             msg = f"Hardware configuration file not found at {path}"
             logger.error(msg)
             raise FileNotFoundError(msg)
         try:
             with path.open() as f:
-                data = json.load(f)
+                data = yaml.safe_load(f)
             return cls.from_dict(data)
-        except json.JSONDecodeError as e:
-            logger.exception("Invalid JSON in hardware configuration file.")
-            msg = "Invalid JSON in hardware configuration file."
+        except yaml.YAMLError as e:
+            logger.exception("Invalid YAML in hardware configuration file.")
+            msg = "Invalid YAML in hardware configuration file."
             raise ConfigError(msg) from e
 
     @classmethod
@@ -66,7 +64,9 @@ class HardwareConfig:
         return operation_mode
 
     @classmethod
-    def _configure_radio_settings(cls, config: HardwareConfig, data: dict[str, Any]) -> None:
+    def _configure_radio_settings(
+        cls, config: HardwareConfig, data: dict[str, Any]
+    ) -> None:
         """Configure radio settings for online mode."""
         config.RADIO_INTERFACE = data["RADIO_INTERFACE"]
         if config.RADIO_INTERFACE.lower() == "serial":
@@ -119,7 +119,6 @@ class HardwareConfig:
         try:
             gps_i2c_bus = int(data["GPS_I2C_BUS"])
             gps_address = int(data["GPS_ADDRESS"], 16)
-            epsg_code = int(data["EPSG_CODE"])
         except ValueError as e:
             msg = "Invalid value in I2C configuration"
             logger.exception(msg)
@@ -131,8 +130,6 @@ class HardwareConfig:
             SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_I2C_BUS=gps_i2c_bus,
             GPS_ADDRESS=gps_address,
-            EPSG_CODE=epsg_code,
-            OPERATION_MODE=data["OPERATION_MODE"],
         )
 
     @classmethod
@@ -187,7 +184,9 @@ class HardwareConfig:
         )
 
     @staticmethod
-    def _validate_required_fields(data: dict[str, Any], required_fields: list[str], interface_type: str) -> None:
+    def _validate_required_fields(
+        data: dict[str, Any], required_fields: list[str], interface_type: str
+    ) -> None:
         """Validate that all required fields are present in the data."""
         missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
