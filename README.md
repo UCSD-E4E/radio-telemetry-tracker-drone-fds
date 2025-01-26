@@ -118,25 +118,21 @@ The system primarily operates in Online Mode with Ground Control Station (GCS) i
 1. **Serial Interface**
    - Direct radio modem connection to GCS
    - Configuration parameters:
-     ```json
-     {
-       "RADIO_INTERFACE": "SERIAL",
-       "RADIO_PORT": "/dev/ttyUSB0",
-       "RADIO_BAUDRATE": 57600
-     }
+     ```yaml
+     RADIO_INTERFACE: SERIAL
+     RADIO_PORT: /dev/ttyUSB0
+     RADIO_BAUDRATE: 57600
      ```
 
 2. **Simulated Interface**
    - TCP/IP-based communication with GCS
    - Useful for testing and development
    - Configuration parameters:
-     ```json
-     {
-       "RADIO_INTERFACE": "SIMULATED",
-       "RADIO_HOST": "localhost",
-       "RADIO_TCP_PORT": 50000,
-       "RADIO_SERVER_MODE": true
-     }
+     ```yaml
+     RADIO_INTERFACE: SIMULATED
+     RADIO_HOST: localhost
+     RADIO_TCP_PORT: 50000
+     RADIO_SERVER_MODE: true
      ```
 
 ### Offline Mode
@@ -187,25 +183,21 @@ poetry install
 
 ### Hardware Configuration
 Create or modify `./config/hardware_config.json`:
-```json
-{
-  "GPS_INTERFACE": "SIMULATED",
-  "EPSG_CODE": 32611,
-  "GPS_I2C_BUS": 1,
-  "GPS_ADDRESS": "0x42",
-  "GPS_SERIAL_PORT": "/dev/ttyUSB0",
-  "GPS_SERIAL_BAUDRATE": 9600,
-  "GPS_SIMULATION_SPEED": 1.0,
-  "USE_USB_STORAGE": true,
-  "SDR_TYPE": "USRP",
-  "OPERATION_MODE": "ONLINE",
-  "RADIO_INTERFACE": "SERIAL",
-  "RADIO_PORT": "/dev/ttyUSB1",
-  "RADIO_BAUDRATE": 57600,
-  "RADIO_HOST": "localhost",
-  "RADIO_TCP_PORT": 50000,
-  "RADIO_SERVER_MODE": true
-}
+```yaml
+GPS_INTERFACE: SIMULATED
+GPS_I2C_BUS: 1
+GPS_ADDRESS: "0x42"
+GPS_SERIAL_PORT: /dev/ttyUSB0
+GPS_SERIAL_BAUDRATE: 9600
+GPS_SIMULATION_SPEED: 1.0
+USE_USB_STORAGE: true
+SDR_TYPE: USRP
+RADIO_INTERFACE: SERIAL
+RADIO_PORT: /dev/ttyUSB1
+RADIO_BAUDRATE: 57600
+RADIO_HOST: localhost
+RADIO_TCP_PORT: 50000
+RADIO_SERVER_MODE: true
 ```
 
 #### Explanation of Parameters:
@@ -254,19 +246,20 @@ sudo systemctl start usb-automount
 2. **Prepare USB Configuration:**
 - Format USB drive as FAT32
 - Create `ping_finder_config.json` in the root directory (for offline mode):
-```json
-{
-    "gain": 56.0,
-    "sampling_rate": 2500000,
-    "center_frequency": 173500000,
-    "run_num": 1,
-    "enable_test_data": false,
-    "ping_width_ms": 25,
-    "ping_min_snr": 25,
-    "ping_max_len_mult": 1.5,
-    "ping_min_len_mult": 0.5,
-    "target_frequencies": [173043000]
-}
+```yaml
+EPSG_CODE: 32611
+OPERATION_MODE: ONLINE
+gain: 56.0
+sampling_rate: 2500000
+center_frequency: 173500000
+run_num: 1
+enable_test_data: false
+ping_width_ms: 25
+ping_min_snr: 25
+ping_max_len_mult: 1.5
+ping_min_len_mult: 0.5
+target_frequencies:
+  - 173043000
 ```
 
 ## Usage
