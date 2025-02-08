@@ -188,6 +188,8 @@ def run_online_mode(
         hardware_config=hardware_config,
     )
     logger.info("Waiting for configuration from base station...")
+    
+    #TURN ON PING FINDER LED FOR ONLINE MODE HERE
 
     # Main loop - keep program running
     while True:
@@ -269,6 +271,8 @@ def main() -> None:
         if not wait_for_gps_ready(state_manager):
             logger.error("GPS failed to initialize within the timeout period.")
             sys.exit(1)
+            
+        #TURN ON GPS LED HERE
 
         # Run in appropriate mode
         ping_finder_module = None
@@ -276,6 +280,9 @@ def main() -> None:
             run_online_mode(gps_module, state_manager, drone_comms, hardware_config)
         else:
             ping_finder_module = run_offline_mode(gps_module, state_manager, hardware_config)
+            
+            #TURN ON PING FINDER LED FOR OFFLINE MODE HERE
+            
             # Main loop - keep program running
             while True:
                 time.sleep(1)

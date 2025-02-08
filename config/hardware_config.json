@@ -13,5 +13,17 @@
   "RADIO_PORT": "/dev/ttyUSB0",
   "RADIO_BAUDRATE": 57600,
   "RADIO_HOST": "localhost",
-  "RADIO_TCP_PORT": 50000
+  "RADIO_TCP_PORT": 50000,
+  "LEDS": {
+    "WHITE": {
+      "IN": 13,
+      "GND": 14,
+      "CHECKING": "PingFinder"
+    },
+    "GREEN": {
+      "IN": 11,
+      "GND": 9,
+      "CHECKING": "GPS"
+    }
+  }
 }
