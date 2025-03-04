@@ -35,6 +35,8 @@ class HardwareConfig:
     RADIO_HOST: str | None = None
     RADIO_TCP_PORT: int | None = None
     RADIO_SERVER_MODE: bool = False
+    PING_LED: dict[str, int] | None = None
+    GPS_LED: dict[str, int] | None = None
 
     @classmethod
     def load_from_file(cls, path: Path) -> HardwareConfig:

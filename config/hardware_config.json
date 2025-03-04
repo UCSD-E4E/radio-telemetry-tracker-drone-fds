@@ -14,16 +14,12 @@
   "RADIO_BAUDRATE": 57600,
   "RADIO_HOST": "localhost",
   "RADIO_TCP_PORT": 50000,
-  "LEDS": {
-    "WHITE": {
-      "IN": 13,
-      "GND": 14,
-      "CHECKING": "PingFinder"
-    },
-    "GREEN": {
-      "IN": 11,
-      "GND": 9,
-      "CHECKING": "GPS"
-    }
+  "PING_LED": {
+    "IN": 13,
+    "GND": 14
+  },
+  "GPS_LED": {
+    "IN": 11,
+    "GND": 9
   }
 }
