@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from periphery import GPIO
 
 from radio_telemetry_tracker_drone_comms_package import (
     DroneComms,
@@ -190,6 +191,8 @@ def run_online_mode(
     logger.info("Waiting for configuration from base station...")
     
     #TURN ON PING FINDER LED FOR ONLINE MODE HERE
+    ping_finder_LED = GPIO (hardware_config.PING_LED.IN, "out")
+    ping_finder_LED.write(True)
 
     # Main loop - keep program running
     while True:
@@ -273,6 +276,8 @@ def main() -> None:
             sys.exit(1)
             
         #TURN ON GPS LED HERE
+        GPS_LED = GPIO (hardware_config.GPS_LED.IN, "out")
+        GPS_LED.write(True)
 
         # Run in appropriate mode
         ping_finder_module = None
