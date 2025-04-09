@@ -22,13 +22,11 @@ TEST_EASTING = 500000
 TEST_NORTHING = 3762151
 TEST_ALTITUDE = 10
 TEST_AMPLITUDE = 10.0
-TEST_OPERATIONAL_MODE = "ONLINE"  # Example operational mode
 
 @pytest.fixture
 def ping_finder_config_data() -> dict:
     """Fixture for PingFinderConfig test data."""
     return {
-        "OPERATIONAL_MODE": TEST_OPERATIONAL_MODE,
         "gain": TEST_GAIN,
         "sampling_rate": TEST_SAMPLING_RATE,
         "center_frequency": TEST_CENTER_FREQ,
@@ -191,7 +189,6 @@ def test_ping_finder_module_reconfigure(ping_finder_config: PingFinderConfig, mo
 
         # Create new config with different values
         new_config = PingFinderConfig(
-            OPERATION_MODE=TEST_OPERATIONAL_MODE,
             gain=TEST_GAIN_NEW,
             sampling_rate=TEST_SAMPLING_RATE_NEW,
             center_frequency=ping_finder_config.center_frequency,
