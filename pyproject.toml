@@ -9,6 +9,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
+pyyaml = "^6.0"
 smbus2 = "^0.4.3"
 rct-dsp2 = {git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1"}
 pyserial = "^3.5"
