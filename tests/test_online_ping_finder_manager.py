@@ -205,8 +205,8 @@ def test_start_stop_after_config(
     """Test start and stop requests after configuration."""
     # First configure the ping finder
     config_data = ConfigRequestData(
-        ESPG_CODE=32611,
-        OPERATION_MODE="OFFLINE",
+        ESPG_CODE=TEST_ESPG_CODE,
+        OPERATION_MODE=TEST_OPERATIONAL_MODE,
         gain=TEST_GAIN,
         sampling_rate=TEST_SAMPLING_RATE,
         center_frequency=TEST_CENTER_FREQ,
