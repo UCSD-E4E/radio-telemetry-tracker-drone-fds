@@ -1,5 +1,5 @@
 """Tests for configuration functionality."""
-import json
+import yaml
 from pathlib import Path
 
 import pytest
@@ -42,8 +42,8 @@ def test_ping_finder_config_from_dict(ping_finder_config_data: dict) -> None:
 
 def test_ping_finder_config_from_file(tmp_path: Path, ping_finder_config_data: dict) -> None:
     """Test PingFinderConfig creation from file."""
-    config_file = tmp_path / "config.json"
-    config_file.write_text(json.dumps(ping_finder_config_data))
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.dumps(ping_finder_config_data))
     config = PingFinderConfig.load_from_file(config_file)
     assert config.gain == ping_finder_config_data["gain"]  # noqa: S101
     assert config.sampling_rate == ping_finder_config_data["sampling_rate"]  # noqa: S101

@@ -22,12 +22,15 @@ TEST_EASTING = 500000
 TEST_NORTHING = 3762151
 TEST_ALTITUDE = 10
 TEST_AMPLITUDE = 10.0
-
+TEST_ESPG_CODE = 32633  # Example EPSG code for UTM zone 33N
+TEST_OPERATIONAL_MODE = "ONLINE"  # Example operational mode
 
 @pytest.fixture
 def ping_finder_config_data() -> dict:
     """Fixture for PingFinderConfig test data."""
     return {
+        "espg_code": TEST_ESPG_CODE,
+        "operational_mode": TEST_OPERATIONAL_MODE,
         "gain": TEST_GAIN,
         "sampling_rate": TEST_SAMPLING_RATE,
         "center_frequency": TEST_CENTER_FREQ,
