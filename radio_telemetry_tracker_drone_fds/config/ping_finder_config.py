@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import yaml
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 if TYPE_CHECKING:
     from pathlib import Path

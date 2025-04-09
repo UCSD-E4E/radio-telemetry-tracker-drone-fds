@@ -28,6 +28,8 @@ TEST_SAMPLING_RATE = 2048000
 TEST_CENTER_FREQ = 173043000
 TEST_PING_WIDTH_MS = 20
 TEST_PING_MIN_SNR = 10
+TEST_OPERATIONAL_MODE = "OFFLINE"  # Example operational mode
+TEST_ESPG_CODE = 32611  # Example EPSG code for UTM zone 11N
 
 
 @pytest.fixture
@@ -169,6 +171,8 @@ def test_stop_request_handler_not_configured(
 def test_config_request_handler(online_manager: OnlinePingFinderManager, mock_drone_comms: MagicMock) -> None:
     """Test config request handler."""
     config_data = ConfigRequestData(
+        ESPG_CODE=TEST_ESPG_CODE,
+        OPERATION_MODE=TEST_OPERATIONAL_MODE,
         gain=TEST_GAIN,
         sampling_rate=TEST_SAMPLING_RATE,
         center_frequency=TEST_CENTER_FREQ,
@@ -201,6 +205,8 @@ def test_start_stop_after_config(
     """Test start and stop requests after configuration."""
     # First configure the ping finder
     config_data = ConfigRequestData(
+        ESPG_CODE=32611,
+        OPERATION_MODE="OFFLINE",
         gain=TEST_GAIN,
         sampling_rate=TEST_SAMPLING_RATE,
         center_frequency=TEST_CENTER_FREQ,

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import yaml
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from radio_telemetry_tracker_drone_fds.config.errors import ConfigError
 
@@ -65,7 +66,7 @@ class HardwareConfig:
 
     @classmethod
     def _configure_radio_settings(
-        cls, config: HardwareConfig, data: dict[str, Any]
+        cls, config: HardwareConfig, data: dict[str, Any],
     ) -> None:
         """Configure radio settings for online mode."""
         config.RADIO_INTERFACE = data["RADIO_INTERFACE"]
@@ -185,7 +186,7 @@ class HardwareConfig:
 
     @staticmethod
     def _validate_required_fields(
-        data: dict[str, Any], required_fields: list[str], interface_type: str
+        data: dict[str, Any], required_fields: list[str], interface_type: str,
     ) -> None:
         """Validate that all required fields are present in the data."""
         missing_fields = [field for field in required_fields if field not in data]

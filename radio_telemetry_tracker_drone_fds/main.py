@@ -1,7 +1,6 @@
 """Main entry point for the Radio Telemetry Tracker Drone FDS application."""
 from __future__ import annotations
 
-import yaml
 import logging
 import os
 import sys
@@ -9,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 
+import yaml
 from radio_telemetry_tracker_drone_comms_package import (
     DroneComms,
     RadioConfig,
