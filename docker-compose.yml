@@ -1,0 +1,10 @@
+services:
+  dev:
+    build: .
+    volumes:
+      - .:/workspace/radio-telemetry-tracker-drone-fds
+    devices:
+      - "/dev/i2c-1:/dev/i2c-1"
+      - "/dev/bus/usb/001/006:/dev/bus/usb/001/006"
+    privileged: true
+    command: /bin/sh -c "while sleep 10000; do :; done"
