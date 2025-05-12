@@ -1,7 +1,6 @@
 """Main entry point for the Radio Telemetry Tracker Drone FDS application."""
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -9,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 
+import yaml
 from radio_telemetry_tracker_drone_comms_package import (
     DroneComms,
     RadioConfig,
@@ -51,7 +51,7 @@ def initialize_gps_interface(hardware_config: HardwareConfig) -> GPSInterface:
 
 
 def find_ping_finder_config() -> Path | None:
-    """Search for ping_finder_config.json on first mounted USB directory.
+    """Search for ping_finder_config.yaml on first mounted USB directory.
 
     Returns:
         Path | None: Path to the configuration file if found, else None.
@@ -63,11 +63,11 @@ def find_ping_finder_config() -> Path | None:
 
     # Only check first device
     for device in usb_media_path.iterdir():
-        config_path = device / "ping_finder_config.json"
+        config_path = device / "ping_finder_config.yaml"
         if config_path.exists():
-            logger.info("Found ping_finder_config.json at %s", config_path)
+            logger.info("Found ping_finder_config.yaml at %s", config_path)
             return config_path
-        logger.error("ping_finder_config.json not found on USB device %s", device)
+        logger.error("ping_finder_config.yaml not found on USB device %s", device)
         return None
 
     logger.error("No USB devices found.")
@@ -83,7 +83,7 @@ def initialize_drone_comms(hardware_config: HardwareConfig) -> DroneComms | None
     Returns:
         DroneComms instance if in ONLINE mode, None otherwise
     """
-    if hardware_config.OPERATION_MODE != "ONLINE":
+    if PingFinderConfig.OPERATION_MODE != "ONLINE":
         return None
 
     radio_config = RadioConfig(
@@ -153,7 +153,7 @@ def initialize_modules(hardware_config: HardwareConfig) -> tuple[DroneComms | No
     """
     # Initialize DroneComms if in ONLINE mode
     drone_comms = initialize_drone_comms(hardware_config)
-    if hardware_config.OPERATION_MODE == "ONLINE" and drone_comms is None:
+    if PingFinderConfig.OPERATION_MODE == "ONLINE" and drone_comms is None:
         logger.error("Failed to initialize DroneComms in ONLINE mode")
         sys.exit(1)
 
@@ -162,7 +162,7 @@ def initialize_modules(hardware_config: HardwareConfig) -> tuple[DroneComms | No
 
     # Initialize GPS module
     gps_interface = initialize_gps_interface(hardware_config)
-    gps_module = GPSModule(gps_interface, hardware_config.EPSG_CODE, state_manager)
+    gps_module = GPSModule(gps_interface, PingFinderConfig.EPSG_CODE, state_manager)
 
     return drone_comms, state_manager, gps_module
 
@@ -216,7 +216,7 @@ def run_offline_mode(
         sys.exit(1)
 
     # Load base config from file
-    config_data = json.loads(config_path.read_text())
+    config_data = yaml.loads(config_path.read_text())
     # Update output directory
     config_data["output_dir"] = str(get_output_directory(hardware_config))
     ping_finder_config = PingFinderConfig.from_dict(config_data)
@@ -246,7 +246,7 @@ def get_config_path(hardware_config: HardwareConfig) -> Path | None:
     if hardware_config.USE_USB_STORAGE:
         return find_ping_finder_config()
 
-    config_path = Path("./config/ping_finder_config.json")
+    config_path = Path("./config/ping_finder_config.yaml")
     return config_path if config_path.exists() else None
 
 
@@ -256,7 +256,7 @@ def main() -> None:
 
     try:
         # Load hardware configuration
-        hardware_config = HardwareConfig.load_from_file(Path("./config/hardware_config.json"))
+        hardware_config = HardwareConfig.load_from_file(Path("./config/hardware_config.yaml"))
 
         # Initialize modules
         drone_comms, state_manager, gps_module = initialize_modules(hardware_config)
@@ -272,7 +272,7 @@ def main() -> None:
 
         # Run in appropriate mode
         ping_finder_module = None
-        if hardware_config.OPERATION_MODE == "ONLINE":
+        if PingFinderConfig.OPERATION_MODE == "ONLINE":
             run_online_mode(gps_module, state_manager, drone_comms, hardware_config)
         else:
             ping_finder_module = run_offline_mode(gps_module, state_manager, hardware_config)

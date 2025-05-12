@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -14,10 +15,13 @@ from radio_telemetry_tracker_drone_fds.config.errors import ConfigError
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class PingFinderConfig:
     """Configuration for the ping finder."""
 
+    ESPG_CODE: int
+    OPERATION_MODE: str
     gain: float
     sampling_rate: int
     center_frequency: int
@@ -32,24 +36,26 @@ class PingFinderConfig:
 
     @classmethod
     def load_from_file(cls, path: Path) -> PingFinderConfig:
-        """Load ping finder configuration from a JSON file."""
+        """Load ping finder configuration from a YAML file."""
         if not path.exists():
             msg = f"PingFinder configuration file not found at {path}"
             logger.error(msg)
             raise FileNotFoundError(msg)
         try:
             with path.open() as f:
-                data = json.load(f)
+                data = yaml.safe_load(f)
             return cls.from_dict(data)
-        except json.JSONDecodeError as e:
-            logger.exception("Invalid JSON in ping finder configuration file.")
-            msg = "Invalid JSON in ping finder configuration file."
+        except yaml.YAMLError as e:
+            logger.exception("Invalid YAML in ping finder configuration file.")
+            msg = "Invalid YAML in ping finder configuration file."
             raise ConfigError(msg) from e
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PingFinderConfig:
         """Load ping finder configuration from a dictionary."""
         required_fields = {
+            "ESPG_CODE": int,
+            "OPERATION_MODE": str,
             "gain": float,
             "sampling_rate": int,
             "center_frequency": int,

@@ -30,6 +30,7 @@ TEST_PING_WIDTH_MS = 20
 TEST_PING_MIN_SNR = 10
 
 
+
 @pytest.fixture
 def mock_drone_comms() -> MagicMock:
     """Fixture for mocked DroneComms."""

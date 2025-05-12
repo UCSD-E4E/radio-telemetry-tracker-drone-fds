@@ -23,7 +23,6 @@ TEST_NORTHING = 3762151
 TEST_ALTITUDE = 10
 TEST_AMPLITUDE = 10.0
 
-
 @pytest.fixture
 def ping_finder_config_data() -> dict:
     """Fixture for PingFinderConfig test data."""
