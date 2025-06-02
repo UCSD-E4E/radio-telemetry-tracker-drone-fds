@@ -1,295 +1,209 @@
-"""Main entry point for the Radio Telemetry Tracker Drone FDS application."""
+"""Hardware configuration management."""
+
 from __future__ import annotations
 
 import logging
-import os
-import sys
-import threading
-import time
-from pathlib import Path
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import yaml
-from radio_telemetry_tracker_drone_comms_package import (
-    DroneComms,
-    RadioConfig,
-)
 
-from radio_telemetry_tracker_drone_fds.config import HardwareConfig, PingFinderConfig
-from radio_telemetry_tracker_drone_fds.gps import GPSInterface, GPSModule
-from radio_telemetry_tracker_drone_fds.gps.gps_interface import (
-    I2CGPSInterface,
-    SerialGPSInterface,
-    SimulatedGPSInterface,
-)
-from radio_telemetry_tracker_drone_fds.ping_finder import PingFinderModule
-from radio_telemetry_tracker_drone_fds.ping_finder.online_ping_finder_manager import OnlinePingFinderManager
-from radio_telemetry_tracker_drone_fds.state.state_manager import StateManager
-from radio_telemetry_tracker_drone_fds.utils.logging_setup import setup_logging
+from radio_telemetry_tracker_drone_fds.config.errors import ConfigError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Global reference to prevent garbage collection
-_online_manager = None
+@dataclass
+class HardwareConfig:
+    """Configuration for hardware components."""
 
+    GPS_INTERFACE: str
+    USE_USB_STORAGE: bool
+    SDR_TYPE: str
+    GPS_I2C_BUS: int | None = None
+    GPS_ADDRESS: int | None = None
+    GPS_SERIAL_PORT: str | None = None
+    GPS_SERIAL_BAUDRATE: int | None = None
+    GPS_SIMULATION_SPEED: float = 1.0
+    RADIO_INTERFACE: str | None = None
+    RADIO_PORT: str | None = None
+    RADIO_BAUDRATE: int | None = None
+    RADIO_HOST: str | None = None
+    RADIO_TCP_PORT: int | None = None
+    RADIO_SERVER_MODE: bool = False
 
-def initialize_gps_interface(hardware_config: HardwareConfig) -> GPSInterface:
-    """Initialize and return appropriate GPS interface based on configuration."""
-    gps_interface_type = hardware_config.GPS_INTERFACE.upper()
-    if gps_interface_type == "I2C":
-        return I2CGPSInterface(
-            hardware_config.GPS_I2C_BUS, hardware_config.GPS_ADDRESS,
-        )
-    if gps_interface_type == "SERIAL":
-        return SerialGPSInterface(
-            hardware_config.GPS_SERIAL_PORT, hardware_config.GPS_SERIAL_BAUDRATE,
-        )
-    if gps_interface_type == "SIMULATED":
-        return SimulatedGPSInterface(hardware_config.GPS_SIMULATION_SPEED)
-
-    logger.error("Unsupported GPS interface: %s", hardware_config.GPS_INTERFACE)
-    sys.exit(1)
-
-
-def find_ping_finder_config() -> Path | None:
-    """Search for ping_finder_config.yaml on first mounted USB directory.
-
-    Returns:
-        Path | None: Path to the configuration file if found, else None.
-    """
-    usb_media_path = Path("/media") / os.getenv("USER", "")
-    if not usb_media_path.exists():
-        logger.error("USB media path %s does not exist.", usb_media_path)
-        return None
-
-    # Only check first device
-    for device in usb_media_path.iterdir():
-        config_path = device / "ping_finder_config.yaml"
-        if config_path.exists():
-            logger.info("Found ping_finder_config.yaml at %s", config_path)
-            return config_path
-        logger.error("ping_finder_config.yaml not found on USB device %s", device)
-        return None
-
-    logger.error("No USB devices found.")
-    return None
-
-
-def initialize_drone_comms(hardware_config: HardwareConfig) -> DroneComms | None:
-    """Initialize DroneComms if in ONLINE mode.
-
-    Args:
-        hardware_config: Hardware configuration object
-
-    Returns:
-        DroneComms instance if in ONLINE mode, None otherwise
-    """
-    if PingFinderConfig.OPERATION_MODE != "ONLINE":
-        return None
-
-    radio_config = RadioConfig(
-        interface_type=hardware_config.RADIO_INTERFACE.lower(),
-        port=hardware_config.RADIO_PORT,
-        baudrate=hardware_config.RADIO_BAUDRATE,
-        host=hardware_config.RADIO_HOST,
-        tcp_port=hardware_config.RADIO_TCP_PORT,
-        server_mode=hardware_config.RADIO_SERVER_MODE,
-    )
-
-    try:
-        return DroneComms(radio_config=radio_config)
-    except Exception:
-        logger.exception("Failed to initialize DroneComms")
-        raise
-
-
-def wait_for_gps_ready(state_manager: StateManager, timeout: int = 300) -> bool:
-    """Wait for GPS module to be ready within the specified timeout."""
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if state_manager.get_gps_state() == "Running":
-            logger.info("GPS is ready.")
-            return True
-        time.sleep(1)
-    logger.warning("GPS not ready after %d seconds.", timeout)
-    return False
-
-
-def get_output_directory(hardware_config: HardwareConfig) -> Path:
-    """Determine the output directory based on hardware configuration.
-
-    Args:
-        hardware_config: Hardware configuration object
-
-    Returns:
-        Path to the output directory
-    """
-    if hardware_config.USE_USB_STORAGE:
-        usb_media_path = Path("/media") / os.getenv("USER", "")
-        if not usb_media_path.exists():
-            logger.error("USB media path %s does not exist.", usb_media_path)
-            msg = f"USB media path {usb_media_path} does not exist"
+    @classmethod
+    def load_from_file(cls, path: Path) -> HardwareConfig:
+        """Load hardware configuration from a YAML file."""
+        if not path.exists():
+            msg = f"Hardware configuration file not found at {path}"
+            logger.error(msg)
             raise FileNotFoundError(msg)
+        try:
+            with path.open() as f:
+                data = yaml.safe_load(f)
+            return cls.from_dict(data)
+        except yaml.YAMLError as e:
+            logger.exception("Invalid YAML in hardware configuration file.")
+            msg = "Invalid YAML in hardware configuration file."
+            raise ConfigError(msg) from e
 
-        # Find first mounted USB device
-        for device in usb_media_path.iterdir():
-            return device / "rtt_output"
+    @classmethod
+    def _configure_radio_settings(
+        cls, config: HardwareConfig, data: dict[str, Any]
+    ) -> None:
+        """Configure radio settings for online mode."""
+        config.RADIO_INTERFACE = data["RADIO_INTERFACE"]
+        if config.RADIO_INTERFACE.lower() == "serial":
+            config.RADIO_PORT = data["RADIO_PORT"]
+            config.RADIO_BAUDRATE = int(data["RADIO_BAUDRATE"])
+        elif config.RADIO_INTERFACE.lower() == "simulated":
+            config.RADIO_HOST = data["RADIO_HOST"]
+            config.RADIO_TCP_PORT = int(data["RADIO_TCP_PORT"])
+        config.RADIO_SERVER_MODE = True
 
-        msg = "No USB storage device found"
-        logger.error(msg)
-        raise FileNotFoundError(msg)
+    @classmethod
+    def _create_gps_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create GPS configuration based on interface type."""
+        gps_interface = data["GPS_INTERFACE"].upper()
+        if gps_interface == "I2C":
+            return cls._create_i2c_config(data)
+        if gps_interface == "SERIAL":
+            return cls._create_serial_config(data)
+        if gps_interface == "SIMULATED":
+            return cls._create_simulation_config(data)
 
-    # If not using USB storage, use project root
-    return Path.cwd() / "rtt_output"
+        msg = f"Unsupported GPS interface: {gps_interface}"
+        raise ValueError(msg)
 
-
-def initialize_modules(hardware_config: HardwareConfig) -> tuple[DroneComms | None, StateManager, GPSModule]:
-    """Initialize all required modules.
-
-    Args:
-        hardware_config: Hardware configuration object
-
-    Returns:
-        Tuple of (DroneComms | None, StateManager, GPSModule)
-    """
-    # Initialize DroneComms if in ONLINE mode
-    drone_comms = initialize_drone_comms(hardware_config)
-    if PingFinderConfig.OPERATION_MODE == "ONLINE" and drone_comms is None:
-        logger.error("Failed to initialize DroneComms in ONLINE mode")
-        sys.exit(1)
-
-    # Initialize StateManager
-    state_manager = StateManager()
-
-    # Initialize GPS module
-    gps_interface = initialize_gps_interface(hardware_config)
-    gps_module = GPSModule(gps_interface, PingFinderConfig.EPSG_CODE, state_manager)
-
-    return drone_comms, state_manager, gps_module
-
-
-def run_online_mode(
-    gps_module: GPSModule,
-    state_manager: StateManager,
-    drone_comms: DroneComms,
-    hardware_config: HardwareConfig,
-) -> None:
-    """Run the application in online mode.
-
-    Args:
-        gps_module: Initialized GPS module
-        state_manager: State manager instance
-        drone_comms: DroneComms instance
-        hardware_config: Hardware configuration
-    """
-    OnlinePingFinderManager(
-        gps_module=gps_module,
-        state_manager=state_manager,
-        drone_comms=drone_comms,
-        hardware_config=hardware_config,
-    )
-    logger.info("Waiting for configuration from base station...")
-
-    # Main loop - keep program running
-    while True:
-        time.sleep(1)
-
-
-def run_offline_mode(
-    gps_module: GPSModule,
-    state_manager: StateManager,
-    hardware_config: HardwareConfig,
-) -> PingFinderModule:
-    """Run the application in offline mode.
-
-    Args:
-        gps_module: Initialized GPS module
-        state_manager: State manager instance
-        hardware_config: Hardware configuration
-
-    Returns:
-        Initialized and started PingFinderModule
-    """
-    # Load config from file
-    config_path = get_config_path(hardware_config)
-    if not config_path:
-        logger.error("PingFinder configuration not found.")
-        sys.exit(1)
-
-    # Load base config from file
-    config_data = yaml.loads(config_path.read_text())
-    # Update output directory
-    config_data["output_dir"] = str(get_output_directory(hardware_config))
-    ping_finder_config = PingFinderConfig.from_dict(config_data)
-
-    # Initialize and start PingFinder module
-    ping_finder_module = PingFinderModule(
-        gps_module=gps_module,
-        config=ping_finder_config,
-        state_manager=state_manager,
-        sdr_type=hardware_config.SDR_TYPE,
-        drone_comms=None,
-    )
-    ping_finder_module.start()
-
-    return ping_finder_module
-
-
-def get_config_path(hardware_config: HardwareConfig) -> Path | None:
-    """Get the path to the ping finder configuration file.
-
-    Args:
-        hardware_config: Hardware configuration object
-
-    Returns:
-        Path to the configuration file if found, else None
-    """
-    if hardware_config.USE_USB_STORAGE:
-        return find_ping_finder_config()
-
-    config_path = Path("./config/ping_finder_config.yaml")
-    return config_path if config_path.exists() else None
-
-
-def main() -> None:
-    """Main function to initialize and start modules."""
-    setup_logging()
-
-    try:
-        # Load hardware configuration
-        hardware_config = HardwareConfig.load_from_file(Path("./config/hardware_config.yaml"))
-
-        # Initialize modules
-        drone_comms, state_manager, gps_module = initialize_modules(hardware_config)
-
-        # Start GPS module in a separate thread
-        gps_thread = threading.Thread(target=gps_module.run, daemon=True)
-        gps_thread.start()
-
-        # Wait for GPS to be ready
-        if not wait_for_gps_ready(state_manager):
-            logger.error("GPS failed to initialize within the timeout period.")
-            sys.exit(1)
-
-        # Run in appropriate mode
-        ping_finder_module = None
-        if PingFinderConfig.OPERATION_MODE == "ONLINE":
-            run_online_mode(gps_module, state_manager, drone_comms, hardware_config)
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Load hardware configuration from a dictionary."""
+        try:
+            config = cls._create_gps_config(data)
+        except KeyError as e:
+            msg = f"Missing required field: {e.args[0]}"
+            raise ConfigError(msg) from e
         else:
-            ping_finder_module = run_offline_mode(gps_module, state_manager, hardware_config)
-            # Main loop - keep program running
-            while True:
-                time.sleep(1)
+            return config
 
-    except KeyboardInterrupt:
-        logger.info("Received KeyboardInterrupt. Shutting down.")
-    except Exception:
-        logger.exception("An unexpected error occurred.")
-    finally:
-        if "gps_module" in locals():
-            gps_module.stop()
-        if ping_finder_module is not None:
-            ping_finder_module.stop()
+    @classmethod
+    def _create_i2c_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create I2C configuration from dictionary data."""
+        required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS"]
+        cls._validate_required_fields(data, required_fields, "I2C")
 
+        try:
+            gps_i2c_bus = int(data["GPS_I2C_BUS"])
+            gps_address = int(data["GPS_ADDRESS"], 16)
+        except ValueError as e:
+            msg = "Invalid value in I2C configuration"
+            logger.exception(msg)
+            raise ConfigError(msg) from e
 
-if __name__ == "__main__":
-    main()
+        return cls(
+            GPS_INTERFACE="I2C",
+            USE_USB_STORAGE=data["USE_USB_STORAGE"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
+            GPS_I2C_BUS=gps_i2c_bus,
+            GPS_ADDRESS=gps_address,
+        )
+
+    @classmethod
+    def _create_serial_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create Serial configuration from dictionary data."""
+        required_fields = ["GPS_SERIAL_PORT", "GPS_SERIAL_BAUDRATE"]
+        cls._validate_required_fields(data, required_fields, "Serial")
+
+        try:
+            gps_serial_baudrate = int(data["GPS_SERIAL_BAUDRATE"])
+        except ValueError as e:
+            msg = "Invalid value in Serial configuration"
+            logger.exception(msg)
+            raise ConfigError(msg) from e
+
+        return cls(
+            GPS_INTERFACE="SERIAL",
+            USE_USB_STORAGE=data["USE_USB_STORAGE"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
+            GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"],
+            GPS_SERIAL_BAUDRATE=gps_serial_baudrate,
+        )
+
+    @classmethod
+    def _create_simulation_config(cls, data: dict[str, Any]) -> HardwareConfig:
+        """Create Simulation configuration from dictionary data."""
+        simulated_speed = data.get("GPS_SIMULATION_SPEED", 1.0)
+        if not isinstance(simulated_speed, (int, float)):
+            msg = "GPS_SIMULATION_SPEED must be a number"
+            logger.error(msg)
+            raise TypeError(msg)
+
+        return cls(
+            GPS_INTERFACE="SIMULATED",
+            USE_USB_STORAGE=data["USE_USB_STORAGE"],
+            SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
+            GPS_SIMULATION_SPEED=simulated_speed,
+        )
+
+    @staticmethod
+    def _validate_required_fields(
+        data: dict[str, Any], required_fields: list[str], interface_type: str
+    ) -> None:
+        """Validate that all required fields are present in the data."""
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            msg = (
+                f"Missing required fields for {interface_type} interface: "
+                + ", ".join(missing_fields)
+            )
+            logger.error(msg)
+            raise ConfigError(msg)
+
+    @staticmethod
+    def _validate_sdr_type(sdr_type: str) -> str:
+        """Validate the SDR type."""
+        valid_sdr_types = ["USRP", "AIRSPY", "HACKRF", "GENERATOR"]
+        sdr_type_upper = sdr_type.upper()
+        if sdr_type_upper not in valid_sdr_types:
+            msg = (
+                f"Invalid SDR_TYPE: {sdr_type_upper}. "
+                + f"Valid options are: {', '.join(valid_sdr_types)}"
+            )
+            logger.error(msg)
+            raise ConfigError(msg)
+        return sdr_type_upper
+
+    @classmethod
+    def _validate_radio_config(cls, data: dict[str, Any], operation_mode: str) -> None:
+        """Validate radio communication configuration."""
+        if operation_mode == "OFFLINE":
+            return
+
+        if "RADIO_INTERFACE" not in data:
+            msg = "Missing required field: RADIO_INTERFACE"
+            raise ConfigError(msg)
+
+        radio_interface = data["RADIO_INTERFACE"].lower()
+        if radio_interface not in ["serial", "simulated"]:
+            msg = f"Invalid RADIO_INTERFACE: {radio_interface}. Must be 'serial' or 'simulated'"
+            raise ConfigError(msg)
+
+        if radio_interface == "serial":
+            required_fields = ["RADIO_PORT", "RADIO_BAUDRATE"]
+            cls._validate_required_fields(data, required_fields, "Serial Radio")
+            try:
+                int(data["RADIO_BAUDRATE"])
+            except ValueError as e:
+                msg = "RADIO_BAUDRATE must be an integer"
+                raise ConfigError(msg) from e
+        elif radio_interface == "simulated":
+            required_fields = ["RADIO_HOST", "RADIO_TCP_PORT"]
+            cls._validate_required_fields(data, required_fields, "Simulated Radio")
+            try:
+                int(data["RADIO_TCP_PORT"])
+            except ValueError as e:
+                msg = "RADIO_TCP_PORT must be an integer"
+                raise ConfigError(msg) from e

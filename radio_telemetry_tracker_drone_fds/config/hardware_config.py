@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class HardwareConfig:
     """Configuration for hardware components."""
@@ -52,21 +51,8 @@ class HardwareConfig:
             raise ConfigError(msg) from e
 
     @classmethod
-    def _validate_operation_mode(cls, data: dict[str, Any]) -> str:
-        """Validate operation mode configuration."""
-        if "OPERATION_MODE" not in data:
-            msg = "Missing required field: OPERATION_MODE"
-            raise ConfigError(msg)
-
-        operation_mode = data["OPERATION_MODE"].upper()
-        if operation_mode not in ["OFFLINE", "ONLINE"]:
-            msg = f"Invalid OPERATION_MODE: {operation_mode}. Must be 'OFFLINE' or 'ONLINE'"
-            raise ConfigError(msg)
-        return operation_mode
-
-    @classmethod
     def _configure_radio_settings(
-        cls, config: HardwareConfig, data: dict[str, Any],
+        cls, config: HardwareConfig, data: dict[str, Any]
     ) -> None:
         """Configure radio settings for online mode."""
         config.RADIO_INTERFACE = data["RADIO_INTERFACE"]
@@ -96,15 +82,7 @@ class HardwareConfig:
     def from_dict(cls, data: dict[str, Any]) -> HardwareConfig:
         """Load hardware configuration from a dictionary."""
         try:
-            operation_mode = cls._validate_operation_mode(data)
             config = cls._create_gps_config(data)
-
-            # Set operation mode and validate radio config if online
-            config.OPERATION_MODE = operation_mode
-            if operation_mode == "ONLINE":
-                cls._validate_radio_config(data, operation_mode)
-                cls._configure_radio_settings(config, data)
-
         except KeyError as e:
             msg = f"Missing required field: {e.args[0]}"
             raise ConfigError(msg) from e
@@ -114,7 +92,7 @@ class HardwareConfig:
     @classmethod
     def _create_i2c_config(cls, data: dict[str, Any]) -> HardwareConfig:
         """Create I2C configuration from dictionary data."""
-        required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS", "EPSG_CODE"]
+        required_fields = ["GPS_I2C_BUS", "GPS_ADDRESS"]
         cls._validate_required_fields(data, required_fields, "I2C")
 
         try:
@@ -136,12 +114,11 @@ class HardwareConfig:
     @classmethod
     def _create_serial_config(cls, data: dict[str, Any]) -> HardwareConfig:
         """Create Serial configuration from dictionary data."""
-        required_fields = ["GPS_SERIAL_PORT", "GPS_SERIAL_BAUDRATE", "EPSG_CODE"]
+        required_fields = ["GPS_SERIAL_PORT", "GPS_SERIAL_BAUDRATE"]
         cls._validate_required_fields(data, required_fields, "Serial")
 
         try:
             gps_serial_baudrate = int(data["GPS_SERIAL_BAUDRATE"])
-            epsg_code = int(data["EPSG_CODE"])
         except ValueError as e:
             msg = "Invalid value in Serial configuration"
             logger.exception(msg)
@@ -153,45 +130,35 @@ class HardwareConfig:
             SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_SERIAL_PORT=data["GPS_SERIAL_PORT"],
             GPS_SERIAL_BAUDRATE=gps_serial_baudrate,
-            EPSG_CODE=epsg_code,
-            OPERATION_MODE=data["OPERATION_MODE"],
         )
 
     @classmethod
     def _create_simulation_config(cls, data: dict[str, Any]) -> HardwareConfig:
         """Create Simulation configuration from dictionary data."""
-        required_fields = ["EPSG_CODE"]
-        cls._validate_required_fields(data, required_fields, "Simulation")
-
         simulated_speed = data.get("GPS_SIMULATION_SPEED", 1.0)
         if not isinstance(simulated_speed, (int, float)):
             msg = "GPS_SIMULATION_SPEED must be a number"
             logger.error(msg)
             raise TypeError(msg)
-        try:
-            epsg_code = int(data["EPSG_CODE"])
-        except ValueError as e:
-            msg = "Invalid EPSG_CODE in Simulation configuration"
-            logger.exception(msg)
-            raise ConfigError(msg) from e
 
         return cls(
             GPS_INTERFACE="SIMULATED",
             USE_USB_STORAGE=data["USE_USB_STORAGE"],
             SDR_TYPE=cls._validate_sdr_type(data["SDR_TYPE"]),
             GPS_SIMULATION_SPEED=simulated_speed,
-            EPSG_CODE=epsg_code,
-            OPERATION_MODE=data["OPERATION_MODE"],
         )
 
     @staticmethod
     def _validate_required_fields(
-        data: dict[str, Any], required_fields: list[str], interface_type: str,
+        data: dict[str, Any], required_fields: list[str], interface_type: str
     ) -> None:
         """Validate that all required fields are present in the data."""
         missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
-            msg = f"Missing required fields for {interface_type} interface: {', '.join(missing_fields)}"
+            msg = (
+                f"Missing required fields for {interface_type} interface: "
+                + ", ".join(missing_fields)
+            )
             logger.error(msg)
             raise ConfigError(msg)
 
@@ -201,16 +168,18 @@ class HardwareConfig:
         valid_sdr_types = ["USRP", "AIRSPY", "HACKRF", "GENERATOR"]
         sdr_type_upper = sdr_type.upper()
         if sdr_type_upper not in valid_sdr_types:
-            msg = f"Invalid SDR_TYPE: {sdr_type_upper}. Valid options are: {', '.join(valid_sdr_types)}"
+            msg = (
+                f"Invalid SDR_TYPE: {sdr_type_upper}. "
+                + f"Valid options are: {', '.join(valid_sdr_types)}"
+            )
             logger.error(msg)
             raise ConfigError(msg)
         return sdr_type_upper
 
     @classmethod
-    def _validate_radio_config(cls, data: dict[str, Any], operation_mode: str) -> None:
+    def _validate_radio_config(cls, data: dict[str, Any]) -> None:
         """Validate radio communication configuration."""
-        if operation_mode == "OFFLINE":
-            return
+
 
         if "RADIO_INTERFACE" not in data:
             msg = "Missing required field: RADIO_INTERFACE"
@@ -229,7 +198,6 @@ class HardwareConfig:
             except ValueError as e:
                 msg = "RADIO_BAUDRATE must be an integer"
                 raise ConfigError(msg) from e
-
         elif radio_interface == "simulated":
             required_fields = ["RADIO_HOST", "RADIO_TCP_PORT"]
             cls._validate_required_fields(data, required_fields, "Simulated Radio")
