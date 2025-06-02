@@ -49,7 +49,8 @@ jobs:
           pip install uv
           uv venv
           source .venv/bin/activate
-          uv pip install -e ".[dev]"
+          uv pip install -e .
+          uv pip install pytest pytest-assume
 
       - name: Run tests
         run: |
