@@ -75,7 +75,7 @@ class SimulatedGPSInterface(GPSInterface):
         self._data_generator = self._generate_simulated_data()
         self._logger = logging.getLogger(__name__)
 
-    def _generate_simulated_data(self) -> Generator[list[int], None, None]:
+    def _generate_simulated_data(self) -> Generator[list[int]]:
         """Generate simulated GPS data."""
         lat = 32.7157  # Starting latitude (e.g., San Diego, CA)
         lon = -117.1611  # Starting longitude
@@ -105,7 +105,7 @@ class SimulatedGPSInterface(GPSInterface):
         current_alt = altitude + 0.01 * elapsed_time  # Ascend at 0.1m/s
 
         # Time in HHMMSS format
-        now = dt.datetime.now(tz=dt.timezone.utc)
+        now = dt.datetime.now(tz=dt.UTC)
         time_str = now.strftime("%H%M%S.%f")[:-3]
 
         # Date in ddmmyy format

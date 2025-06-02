@@ -35,7 +35,7 @@ def test_state_manager_gps_data_history() -> None:
     """Test GPS data history functionality."""
     state_manager = StateManager()
     gps_data = GPSData(
-        timestamp=dt.datetime.now(dt.timezone.utc).timestamp(),
+        timestamp=dt.datetime.now(dt.UTC).timestamp(),
         latitude=TEST_LAT,
         longitude=TEST_LON,
     )
@@ -43,7 +43,7 @@ def test_state_manager_gps_data_history() -> None:
 
     # Create slightly different data
     new_data = GPSData(
-        timestamp=dt.datetime.now(dt.timezone.utc).timestamp(),
+        timestamp=dt.datetime.now(dt.UTC).timestamp(),
         latitude=TEST_LAT + 0.0001,
         longitude=TEST_LON,
     )

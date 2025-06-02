@@ -51,13 +51,13 @@ def ping_finder_config(ping_finder_config_data: dict) -> PingFinderConfig:
 @pytest.fixture
 def mock_drone_comms() -> MagicMock:
     """Fixture for mocked DroneComms."""
-    return cast(MagicMock, MagicMock(spec=DroneComms))
+    return cast("MagicMock", MagicMock(spec=DroneComms))
 
 
 @pytest.fixture
 def mock_ping_finder() -> MagicMock:
     """Fixture for mocked PingFinder."""
-    mock = cast(MagicMock, MagicMock(spec=PingFinder))
+    mock = cast("MagicMock", MagicMock(spec=PingFinder))
     # Ensure start() and stop() methods don't raise exceptions
     mock.start.return_value = None
     mock.stop.return_value = None
@@ -110,7 +110,7 @@ def test_ping_finder_module_callback(ping_finder_config: PingFinderConfig, mock_
     """Test PingFinderModule callback functionality."""
     gps_module = MagicMock()
     state_manager = StateManager()
-    gps_data = GPSData(timestamp=dt.datetime.now(dt.timezone.utc).timestamp(),
+    gps_data = GPSData(timestamp=dt.datetime.now(dt.UTC).timestamp(),
                        easting=TEST_EASTING, northing=TEST_NORTHING, altitude=TEST_ALTITUDE)
     state_manager.update_gps_data(gps_data)
     with patch(
@@ -125,7 +125,7 @@ def test_ping_finder_module_callback(ping_finder_config: PingFinderConfig, mock_
         )
         # Test the callback functionality
         ping_finder_module._callback(  # noqa: SLF001
-            dt.datetime.now(dt.timezone.utc),
+            dt.datetime.now(dt.UTC),
             amplitude=TEST_AMPLITUDE,
             frequency=TEST_CENTER_FREQ,
         )
@@ -138,7 +138,7 @@ def test_ping_finder_module_online_callback(
     """Test PingFinderModule callback functionality in online mode."""
     gps_module = MagicMock()
     state_manager = StateManager()
-    gps_data = GPSData(timestamp=dt.datetime.now(dt.timezone.utc).timestamp(),
+    gps_data = GPSData(timestamp=dt.datetime.now(dt.UTC).timestamp(),
                        easting=TEST_EASTING, northing=TEST_NORTHING, altitude=TEST_ALTITUDE)
     state_manager.update_gps_data(gps_data)
 
@@ -155,7 +155,7 @@ def test_ping_finder_module_online_callback(
         )
 
         # Test the callback functionality with drone_comms
-        timestamp = dt.datetime.now(dt.timezone.utc)
+        timestamp = dt.datetime.now(dt.UTC)
         ping_finder_module._callback(  # noqa: SLF001
             timestamp,
             amplitude=TEST_AMPLITUDE,
