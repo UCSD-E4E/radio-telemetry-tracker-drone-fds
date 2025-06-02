@@ -33,7 +33,7 @@ TEST_PING_MIN_SNR = 10
 @pytest.fixture
 def mock_drone_comms() -> MagicMock:
     """Fixture for mocked DroneComms."""
-    mock = cast(MagicMock, MagicMock(spec=DroneComms))
+    mock = cast("MagicMock", MagicMock(spec=DroneComms))
     # Configure send methods to return (packet_id, need_ack, timestamp)
     mock.send_sync_response.return_value = (1, False, 0)
     mock.send_start_response.return_value = (2, False, 0)
@@ -46,13 +46,13 @@ def mock_drone_comms() -> MagicMock:
 @pytest.fixture
 def mock_gps_module() -> MagicMock:
     """Fixture for mocked GPSModule."""
-    return cast(MagicMock, MagicMock())
+    return cast("MagicMock", MagicMock())
 
 
 @pytest.fixture
 def mock_hardware_config() -> MagicMock:
     """Fixture for mocked HardwareConfig."""
-    config = cast(MagicMock, MagicMock(spec=HardwareConfig))
+    config = cast("MagicMock", MagicMock(spec=HardwareConfig))
     config.SDR_TYPE = "GENERATOR"
     config.USE_USB_STORAGE = False
     return config
@@ -61,7 +61,7 @@ def mock_hardware_config() -> MagicMock:
 @pytest.fixture
 def mock_ping_finder() -> MagicMock:
     """Fixture for mocked PingFinder."""
-    mock = cast(MagicMock, MagicMock(spec=PingFinder))
+    mock = cast("MagicMock", MagicMock(spec=PingFinder))
 
     # Configure methods to not raise exceptions and handle state transitions
     def mock_start() -> None:
@@ -261,16 +261,16 @@ def test_output_directory_usb_storage(
     mock_exists.return_value = True
 
     # Create a mock device path that behaves like a Path object
-    mock_device = cast(MagicMock, MagicMock())
+    mock_device = cast("MagicMock", MagicMock())
     mock_device.__str__.return_value = "/media/user/usb0"
     mock_device.__truediv__.return_value = Path("/media/user/usb0/rtt_output")
     mock_iterdir.return_value = [mock_device]
 
     state_manager = StateManager()
     manager = OnlinePingFinderManager(
-        gps_module=cast(MagicMock, MagicMock()),
+        gps_module=cast("MagicMock", MagicMock()),
         state_manager=state_manager,
-        drone_comms=cast(MagicMock, MagicMock()),
+        drone_comms=cast("MagicMock", MagicMock()),
         hardware_config=mock_hardware_config,
     )
 
