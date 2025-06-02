@@ -152,6 +152,18 @@ class PingFinderModule:
             gps_data,
         )
 
+        # Log ping data to CSV
+        self._log_ping_to_csv((
+            dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
+            frequency,
+            amplitude,
+            gps_data.easting,
+            gps_data.northing,
+            gps_data.altitude,
+            gps_data.heading,
+            gps_data.epsg_code,
+        ))
+
         # Send ping data if in ONLINE mode
         if self._drone_comms is not None:
             ping_data = PingData(
@@ -177,6 +189,15 @@ class PingFinderModule:
                 estimate,
                 gps_data,
             )
+
+            # Log estimation to CSV
+            self._log_estimation_to_csv((
+                dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
+                frequency,
+                estimate[0],
+                estimate[1],
+                gps_data.epsg_code,
+            ))
 
             # Send location estimation if in ONLINE mode
             if self._drone_comms is not None:
