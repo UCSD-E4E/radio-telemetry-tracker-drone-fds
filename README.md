@@ -307,7 +307,7 @@ This will install additional tools like:
 
 2. **Launch FDS**
     ```bash
-    poetry run radio_telemetry_tracker_drone_fds
+    uv run radio_telemetry_tracker_drone_fds
     ```
 
 3. **Operation**
@@ -317,50 +317,50 @@ This will install additional tools like:
 
 ## Automatic Startup
 
-To ensure the application runs automatically on system startup, you can create a **systemd** service. This is useful so when the microprocessor is powered on by the drone and the application can run without the need to manually start it. The configuration is also only loaded in offline mode when the program is started.
+To ensure the application runs automatically on system startup, create a systemd service:
 
-1. **Create a systemd Service File:**
-
-    Create a file named `radio_telemetry_tracker.service` in `/etc/systemd/system/`:
-
+1. **Create Service File:**
     ```bash
     sudo tee /etc/systemd/system/radio_telemetry_tracker.service <<EOF
     [Unit]
     Description=Radio Telemetry Tracker Drone FDS Service
-    After=network.target
+    After=network.target usb-automount.service
 
     [Service]
     User=your_username
     WorkingDirectory=/path/to/radio-telemetry-tracker-drone-fds
-    Environment=PATH=/usr/bin:/usr/local/bin
-    Environment=VIRTUAL_ENV=/path/to/radio-telemetry-tracker-drone-fds/.venv
-    ExecStart=/path/to/radio-telemetry-tracker-drone-fds/.venv/bin/radio-telemetry-tracker-drone-fds
+    ExecStart=/usr/local/bin/uv run radio-telemetry-tracker-drone-fds
     Restart=always
+    RestartSec=10
+    StandardOutput=append:/var/log/radio_telemetry_tracker.log
+    StandardError=append:/var/log/radio_telemetry_tracker.error.log
 
     [Install]
     WantedBy=multi-user.target
     EOF
     ```
 
-    **Replace the following placeholders:**
-    - `your_username`: Your actual Linux username.
-    - `/path/to/radio-telemetry-tracker-drone-fds`: The full path to your cloned repository.
-
-2. **Reload systemd and Enable the Service:**
+2. **Enable and Start:**
     ```bash
+    # Create log files with proper permissions
+    sudo touch /var/log/radio_telemetry_tracker.log /var/log/radio_telemetry_tracker.error.log
+    sudo chown your_username:your_username /var/log/radio_telemetry_tracker.log /var/log/radio_telemetry_tracker.error.log
+    
     sudo systemctl daemon-reload
     sudo systemctl enable radio_telemetry_tracker.service
     sudo systemctl start radio_telemetry_tracker.service
     ```
 
-3. **Check Service Status:**
+3. **Check Status and Debug:**
     ```bash
+    # Check service status
     sudo systemctl status radio_telemetry_tracker.service
-    ```
-
-    You should see output indicating that the service is active and running. If there are issues, logs can be viewed using:
-    ```bash
-    sudo journalctl -u radio_telemetry_tracker.service -f
+    
+    # View application logs
+    tail -f /var/log/radio_telemetry_tracker.log
+    
+    # View error logs
+    tail -f /var/log/radio_telemetry_tracker.error.log
     ```
 
 ## Troubleshooting
