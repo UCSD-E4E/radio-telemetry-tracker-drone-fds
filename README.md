@@ -84,8 +84,8 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to t
 
 ### System Requirements
 - **Operating System:** Ubuntu 24.04 or later
-- **Python:** 3.12 or later
-- **Poetry:** 1.8 or later
+- **Python:** 3.13 or later
+- **uv:** 0.7.9 or later
 
 ### System Dependencies
 ```bash
@@ -177,10 +177,19 @@ sudo udevadm trigger
 
 ### 2. Software Installation
 ```bash
-# Clone and install
+# Install uv if not already installed
+pip install uv
+
+# Clone the repository
 git clone https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-fds.git
 cd radio-telemetry-tracker-drone-fds
-poetry install
+
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate
+
+# Install the package in development mode
+uv pip install -e .
 ```
 
 ## Configuration
@@ -271,6 +280,26 @@ sudo systemctl start usb-automount
 
 ## Usage
 
+### Running the Software
+```bash
+# Make sure you're in the virtual environment
+source .venv/bin/activate
+
+# Run the software
+radio-telemetry-tracker-drone-fds
+```
+
+### Development
+For development work, install the development dependencies:
+```bash
+uv pip install -e ".[dev]"
+```
+
+This will install additional tools like:
+- pytest for testing
+- ruff for linting
+- pytest-assume for additional test assertions
+
 ### Online Mode Usage
 1. **Start the Ground Control Station**
    - Follow GCS setup instructions
@@ -303,10 +332,10 @@ To ensure the application runs automatically on system startup, you can create a
     [Service]
     User=your_username
     WorkingDirectory=/path/to/radio-telemetry-tracker-drone-fds
-    ExecStart=/usr/bin/poetry run radio_telemetry_tracker_drone_fds
-    Restart=always
     Environment=PATH=/usr/bin:/usr/local/bin
-    Environment=POETRY_VIRTUALENVS_IN_PROJECT=true
+    Environment=VIRTUAL_ENV=/path/to/radio-telemetry-tracker-drone-fds/.venv
+    ExecStart=/path/to/radio-telemetry-tracker-drone-fds/.venv/bin/radio-telemetry-tracker-drone-fds
+    Restart=always
 
     [Install]
     WantedBy=multi-user.target
