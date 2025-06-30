@@ -1,28 +1,41 @@
-[tool.poetry]
+[project]
 name = "radio-telemetry-tracker-drone-fds"
-version = "0.3.1"
+version = "0.4.0"
 description = "Radio Telemetry Tracker Drone FDS"
-authors = ["Tyler Flar <tflar@ucsd.edu>"]
-packages = [
-    { include = "radio_telemetry_tracker_drone_fds" },
+readme = "README.md"
+authors = [
+    { name = "TylerFlar", email = "tflar@ucsd.edu" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pynmea2>=1.19.0",
+    "pyproj>=3.7.1",
+    "pyserial>=3.5",
+    "radio-telemetry-tracker-drone-comms-package",
+    "rct-dsp2",
+    "smbus2>=0.5.0",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-smbus2 = "^0.4.3"
-rct-dsp2 = {git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1"}
-pyserial = "^3.5"
-pynmea2 = "^1.19.0"
-pyproj = "^3.7.0"
-radio-telemetry-tracker-drone-comms-package = {git = "https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-comms-package.git"}
+[project.scripts]
+radio-telemetry-tracker-drone-fds = "radio_telemetry_tracker_drone_fds.main:main"
 
-[tool.poetry.scripts]
-radio_telemetry_tracker_drone_fds = "radio_telemetry_tracker_drone_fds.main:main"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.8.0"
-pytest = "^8.3.3"
-pytest-assume = "^2.4.3"
+[tool.hatch.build.targets.wheel]
+packages = ["src/radio_telemetry_tracker_drone_fds"]
+
+[tool.uv.sources]
+rct-dsp2 = { git = "https://github.com/UCSD-E4E/radio_collar_tracker_dsp2.git", rev = "v1.1.1" }
+radio-telemetry-tracker-drone-comms-package = { git = "https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-comms-package.git" }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-assume>=2.4.3",
+    "ruff>=0.11.12",
+]
 
 [tool.ruff]
 line-length = 120
@@ -36,7 +49,3 @@ convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--maxfail=5 --tb=short"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

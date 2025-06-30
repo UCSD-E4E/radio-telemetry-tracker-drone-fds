@@ -167,3 +167,5 @@ deleteme/
 rtt_output/
 output/
 test_output/
+
+uv.lock

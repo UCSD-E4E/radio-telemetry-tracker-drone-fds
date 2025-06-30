@@ -81,7 +81,7 @@ class PingFinderModule:
         """Set up CSV logging for pings and location estimations."""
         output_dir = Path(config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%d_%H%M%S")
         self._csv_ping_filename = output_dir / f"ping_log_{timestamp}_run{self._run_num}.csv"
         self._csv_estimation_filename = output_dir / f"location_estimation_log_{timestamp}_run{self._run_num}.csv"
 
@@ -146,11 +146,23 @@ class PingFinderModule:
         # Log ping data using the logging helper
         log_ping(
             self._run_num,
-            dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.timezone.utc).isoformat(),
+            dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
             frequency,
             amplitude,
             gps_data,
         )
+
+        # Log ping data to CSV
+        self._log_ping_to_csv((
+            dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
+            frequency,
+            amplitude,
+            gps_data.easting,
+            gps_data.northing,
+            gps_data.altitude,
+            gps_data.heading,
+            gps_data.epsg_code,
+        ))
 
         # Send ping data if in ONLINE mode
         if self._drone_comms is not None:
@@ -172,11 +184,20 @@ class PingFinderModule:
         if estimate is not None:
             log_estimation(
                 self._run_num,
-                dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.timezone.utc).isoformat(),
+                dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
                 frequency,
                 estimate,
                 gps_data,
             )
+
+            # Log estimation to CSV
+            self._log_estimation_to_csv((
+                dt.datetime.fromtimestamp(gps_data.timestamp, tz=dt.UTC).isoformat(),
+                frequency,
+                estimate[0],
+                estimate[1],
+                gps_data.epsg_code,
+            ))
 
             # Send location estimation if in ONLINE mode
             if self._drone_comms is not None:
@@ -236,7 +257,7 @@ class PingFinderModule:
     def _get_current_location(self, timestamp: dt.datetime | None = None) -> tuple[float, float, float]:
         """Get current GPS location in UTM coordinates based on the closest GPS data to the given timestamp."""
         if timestamp is None:
-            timestamp = dt.datetime.now(tz=dt.timezone.utc)
+            timestamp = dt.datetime.now(tz=dt.UTC)
 
         gps_data = self._state_manager.get_gps_data_closest_to(timestamp.timestamp())
         if gps_data is None or gps_data.easting is None or gps_data.northing is None or gps_data.altitude is None:

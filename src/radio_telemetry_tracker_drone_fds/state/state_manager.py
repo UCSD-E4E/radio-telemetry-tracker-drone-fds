@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 1000
 
+# GPS Constants
+MIN_LATITUDE = -90
+MAX_LATITUDE = 90
+MIN_LONGITUDE = -180
+MAX_LONGITUDE = 180
+MIN_ALTITUDE = -1000  # meters
+MAX_ALTITUDE = 100000  # meters (100km)
+MIN_HEADING = 0
+MAX_HEADING = 360
+MAX_HDOP = 100
+MAX_SATELLITES = 32
+MAX_FIX_QUALITY = 6
+MIN_SATELLITES = 4
+MAX_HDOP_QUALITY = 5
+
 # GPS State Definitions
 class GPSState(Enum):
     """Enumeration of GPS states."""
@@ -43,6 +58,55 @@ class GPSData:
     easting: float | None = None
     northing: float | None = None
     epsg_code: int | None = None
+    satellite_count: int | None = None
+    hdop: float | None = None  # Horizontal Dilution of Precision
+    fix_quality: int | None = None  # 0=invalid, 1=GPS fix, 2=DGPS fix, etc.
+    is_valid: bool = False  # Overall validity flag
+
+    def validate(self) -> bool:
+        """Validate GPS data values are within reasonable ranges."""
+        is_valid = True
+
+        # Check latitude
+        if self.latitude is not None:
+            is_valid = is_valid and MIN_LATITUDE <= self.latitude <= MAX_LATITUDE
+
+        # Check longitude
+        if self.longitude is not None:
+            is_valid = is_valid and MIN_LONGITUDE <= self.longitude <= MAX_LONGITUDE
+
+        # Check altitude
+        if self.altitude is not None:
+            is_valid = is_valid and MIN_ALTITUDE <= self.altitude <= MAX_ALTITUDE
+
+        # Check heading
+        if self.heading is not None:
+            is_valid = is_valid and MIN_HEADING <= self.heading <= MAX_HEADING
+
+        # Check HDOP
+        if self.hdop is not None:
+            is_valid = is_valid and 0 < self.hdop < MAX_HDOP
+
+        # Check satellite count
+        if self.satellite_count is not None:
+            is_valid = is_valid and 0 <= self.satellite_count <= MAX_SATELLITES
+
+        # Check fix quality
+        if self.fix_quality is not None:
+            is_valid = is_valid and 0 <= self.fix_quality <= MAX_FIX_QUALITY
+
+        return is_valid
+
+    def check_quality(self) -> bool:
+        """Check if GPS data meets quality thresholds."""
+        # Require at least 4 satellites for a valid fix
+        if self.satellite_count is not None and self.satellite_count < MIN_SATELLITES:
+            return False
+        # HDOP should be below 5 for good accuracy
+        if self.hdop is not None and self.hdop > MAX_HDOP_QUALITY:
+            return False
+        # Must have a valid fix quality
+        return not (self.fix_quality is not None and self.fix_quality == 0)
 
 # Centralized StateManager
 class StateManager:

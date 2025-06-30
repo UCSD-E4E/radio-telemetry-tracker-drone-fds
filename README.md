@@ -84,8 +84,8 @@ The **Radio Telemetry Tracker Drone FDS** is a Python-based system designed to t
 
 ### System Requirements
 - **Operating System:** Ubuntu 24.04 or later
-- **Python:** 3.12 or later
-- **Poetry:** 1.8 or later
+- **Python:** 3.13 or later
+- **uv:** 0.7.9 or later
 
 ### System Dependencies
 ```bash
@@ -177,10 +177,19 @@ sudo udevadm trigger
 
 ### 2. Software Installation
 ```bash
-# Clone and install
+# Install uv if not already installed
+pip install uv
+
+# Clone the repository
 git clone https://github.com/UCSD-E4E/radio-telemetry-tracker-drone-fds.git
 cd radio-telemetry-tracker-drone-fds
-poetry install
+
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate
+
+# Install the package in development mode
+uv pip install -e .
 ```
 
 ## Configuration
@@ -271,6 +280,26 @@ sudo systemctl start usb-automount
 
 ## Usage
 
+### Running the Software
+```bash
+# Make sure you're in the virtual environment
+source .venv/bin/activate
+
+# Run the software
+radio-telemetry-tracker-drone-fds
+```
+
+### Development
+For development work, install the development dependencies:
+```bash
+uv pip install -e ".[dev]"
+```
+
+This will install additional tools like:
+- pytest for testing
+- ruff for linting
+- pytest-assume for additional test assertions
+
 ### Online Mode Usage
 1. **Start the Ground Control Station**
    - Follow GCS setup instructions
@@ -278,7 +307,7 @@ sudo systemctl start usb-automount
 
 2. **Launch FDS**
     ```bash
-    poetry run radio_telemetry_tracker_drone_fds
+    uv run radio_telemetry_tracker_drone_fds
     ```
 
 3. **Operation**
@@ -288,50 +317,50 @@ sudo systemctl start usb-automount
 
 ## Automatic Startup
 
-To ensure the application runs automatically on system startup, you can create a **systemd** service. This is useful so when the microprocessor is powered on by the drone and the application can run without the need to manually start it. The configuration is also only loaded in offline mode when the program is started.
+To ensure the application runs automatically on system startup, create a systemd service:
 
-1. **Create a systemd Service File:**
-
-    Create a file named `radio_telemetry_tracker.service` in `/etc/systemd/system/`:
-
+1. **Create Service File:**
     ```bash
     sudo tee /etc/systemd/system/radio_telemetry_tracker.service <<EOF
     [Unit]
     Description=Radio Telemetry Tracker Drone FDS Service
-    After=network.target
+    After=network.target usb-automount.service
 
     [Service]
     User=your_username
     WorkingDirectory=/path/to/radio-telemetry-tracker-drone-fds
-    ExecStart=/usr/bin/poetry run radio_telemetry_tracker_drone_fds
+    ExecStart=/usr/local/bin/uv run radio-telemetry-tracker-drone-fds
     Restart=always
-    Environment=PATH=/usr/bin:/usr/local/bin
-    Environment=POETRY_VIRTUALENVS_IN_PROJECT=true
+    RestartSec=10
+    StandardOutput=append:/var/log/radio_telemetry_tracker.log
+    StandardError=append:/var/log/radio_telemetry_tracker.error.log
 
     [Install]
     WantedBy=multi-user.target
     EOF
     ```
 
-    **Replace the following placeholders:**
-    - `your_username`: Your actual Linux username.
-    - `/path/to/radio-telemetry-tracker-drone-fds`: The full path to your cloned repository.
-
-2. **Reload systemd and Enable the Service:**
+2. **Enable and Start:**
     ```bash
+    # Create log files with proper permissions
+    sudo touch /var/log/radio_telemetry_tracker.log /var/log/radio_telemetry_tracker.error.log
+    sudo chown your_username:your_username /var/log/radio_telemetry_tracker.log /var/log/radio_telemetry_tracker.error.log
+    
     sudo systemctl daemon-reload
     sudo systemctl enable radio_telemetry_tracker.service
     sudo systemctl start radio_telemetry_tracker.service
     ```
 
-3. **Check Service Status:**
+3. **Check Status and Debug:**
     ```bash
+    # Check service status
     sudo systemctl status radio_telemetry_tracker.service
-    ```
-
-    You should see output indicating that the service is active and running. If there are issues, logs can be viewed using:
-    ```bash
-    sudo journalctl -u radio_telemetry_tracker.service -f
+    
+    # View application logs
+    tail -f /var/log/radio_telemetry_tracker.log
+    
+    # View error logs
+    tail -f /var/log/radio_telemetry_tracker.error.log
     ```
 
 ## Troubleshooting

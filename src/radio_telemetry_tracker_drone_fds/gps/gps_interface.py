@@ -75,7 +75,7 @@ class SimulatedGPSInterface(GPSInterface):
         self._data_generator = self._generate_simulated_data()
         self._logger = logging.getLogger(__name__)
 
-    def _generate_simulated_data(self) -> Generator[list[int], None, None]:
+    def _generate_simulated_data(self) -> Generator[list[int]]:
         """Generate simulated GPS data."""
         lat = 32.7157  # Starting latitude (e.g., San Diego, CA)
         lon = -117.1611  # Starting longitude
@@ -105,7 +105,7 @@ class SimulatedGPSInterface(GPSInterface):
         current_alt = altitude + 0.01 * elapsed_time  # Ascend at 0.1m/s
 
         # Time in HHMMSS format
-        now = dt.datetime.now(tz=dt.timezone.utc)
+        now = dt.datetime.now(tz=dt.UTC)
         time_str = now.strftime("%H%M%S.%f")[:-3]
 
         # Date in ddmmyy format
@@ -117,6 +117,18 @@ class SimulatedGPSInterface(GPSInterface):
         # Track angle in degrees
         track_angle = "054.7"
 
+        # Simulate realistic GPS quality metrics
+        satellite_count = 8  # Simulate good satellite coverage
+        hdop = 1.2  # Good HDOP value
+        fix_quality = 1  # Standard GPS fix
+
+        # Add some realistic noise to the position
+        import random
+        noise_lat = random.gauss(0, 0.00001)  # Small random noise
+        noise_lon = random.gauss(0, 0.00001)
+        current_lat += noise_lat
+        current_lon += noise_lon
+
         # Create NMEA sentences using pynmea2
         gga_msg = pynmea2.GGA(
             "GP",
@@ -125,9 +137,9 @@ class SimulatedGPSInterface(GPSInterface):
                 time_str,
                 self._format_nmea_lat_lon(current_lat, "lat"), self._lat_dir(current_lat),
                 self._format_nmea_lat_lon(current_lon, "lon"), self._lon_dir(current_lon),
-                "1",  # GPS quality indicator
-                "08",  # Number of satellites in use
-                "0.9",  # Horizontal dilution of precision
+                str(fix_quality),  # GPS quality indicator
+                f"{satellite_count:02d}",  # Number of satellites in use
+                f"{hdop:.1f}",  # Horizontal dilution of precision
                 f"{current_alt:.1f}", "M",  # Altitude above mean sea level
                 "0.0", "M",  # Height of geoid above WGS84 ellipsoid
                 "",  # Time since last DGPS update
